@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>404 - Endless Runner</title>
+<style>
+    body {
+        margin: 0;
+        background: #f8fbff;
+        font-family: "Segoe UI", sans-serif;
+        text-align: center;
+        color: #333;
+    }
+    h1 {
+        margin-top: 20px;
+        font-size: 40px;
+        color: #ff6f61;
+    }
+    canvas {
+        background: linear-gradient(#e0f7fa, #ffffff);
+        display: block;
+        margin: 20px auto;
+        border: 3px solid #ff6f61;
+        border-radius: 10px;
+    }
+    #score {
+        font-size: 22px;
+        color: #00796b;
+        margin-bottom: 10px;
+    }
+    #restartBtn {
+        display: none;
+        padding: 12px 25px;
+        background: #ff6f61;
+        border: none;
+        border-radius: 10px;
+        color: white;
+        font-size: 18px;
+        cursor: pointer;
+        transition: 0.2s;
+        margin-top: 10px;
+    }
+    #restartBtn:hover {
+        background: #e85a50;
+    }
+</style>
+</head>
+<body>
+
+<h1>404 - Page Not Found</h1>
+<p>But you can play Endless Runner 🏃‍♂️</p>
+<div id="score">Score: 0</div>
+<canvas id="game" width="500" height="300"></canvas>
+<button id="restartBtn">Play Again</button>
+<p>Press SPACE to jump ⬆️</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreText = document.getElementById("score");
+const restartBtn = document.getElementById("restartBtn");
+
+let player = { x: 50, y: 250, width: 30, height: 50, dy: 0 };
+let obstacles = [];
+let gravity = 0.55;
+let jumpPower = -12;
+let score = 0;
+let gameOver = false;
+
+// Draw Shinchan-style character
+function drawShinchan(x, y) {
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#000";
+
+    // Head
+    ctx.fillStyle = "#fdd"; // skin tone
+    ctx.beginPath();
+    ctx.arc(x + 15, y - 15, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Eyes
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.ellipse(x + 8, y - 15, 4, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + 22, y -15, 4, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Mouth (smile)
+    ctx.beginPath();
+    ctx.arc(x + 15, y - 15, 6, 0, Math.PI);
+    ctx.stroke();
+
+    // Shirt
+    ctx.fillStyle = "red";
+    ctx.fillRect(x, y+1, 30, 20);
+
+    // Shorts
+    ctx.fillStyle = "yellow";
+    ctx.fillRect(x, y +15, 30, 15);
+
+    // Legs
+    ctx.fillStyle = "#fdd";
+    ctx.fillRect(x + 5, y +30, 6, 15);
+    ctx.fillRect(x + 19, y + 30, 6, 15);
+
+    // Shoes
+    ctx.fillStyle = "#000";
+    ctx.fillRect(x + 5, y + 40, 6, 5);
+    ctx.fillRect(x + 19, y + 40, 6, 5);
+}
+
+document.addEventListener("keydown", e => {
+    if (!gameOver && e.code === "Space" && player.y >= 250) {
+        player.dy = jumpPower;
+    }
+});
+
+// Spawn obstacles
+function spawnObstacle() {
+    if (gameOver) return;
+
+    let height = 30;
+    obstacles.push({ x: 500, y: 300 - height, width: 25, height: height });
+
+    let delay = Math.max(600, 1300 - score * 20);
+    setTimeout(spawnObstacle, delay);
+}
+spawnObstacle();
+
+function drawObstacle(ob) {
+    ctx.fillStyle = "#81c784";
+    ctx.fillRect(ob.x, ob.y, ob.width, ob.height);
+}
+
+function gameLoop() {
+    if (gameOver) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Gravity
+    player.dy += gravity;
+    player.y += player.dy;
+    if (player.y > 250) player.y = 250;
+
+    drawShinchan(player.x, player.y);
+
+    obstacles.forEach((ob, i) => {
+        ob.x -= 4;
+        drawObstacle(ob);
+
+        // Collision
+        if (
+            player.x < ob.x + ob.width &&
+            player.x + player.width > ob.x &&
+            player.y + player.height > ob.y
+        ) {
+            endGame();
+        }
+
+        // Passed obstacle
+        if (ob.x + ob.width < 0) {
+            obstacles.splice(i, 1);
+            score++;
+            scoreText.textContent = "Score: " + score;
+        }
+    });
+
+    requestAnimationFrame(gameLoop);
+}
+gameLoop();
+
+function endGame() {
+    gameOver = true;
+    scoreText.textContent = "Game Over! Final Score: " + score;
+    restartBtn.style.display = "inline-block";
+}
+
+restartBtn.onclick = () => {
+    // Reset game
+    score = 0;
+    player.y = 250;
+    player.dy = 0;
+    obstacles = [];
+    gameOver = false;
+    restartBtn.style.display = "none";
+
+    scoreText.textContent = "Score: 0";
+    spawnObstacle();
+    gameLoop();
+};
+</script>
+
+</body>
+</html>
