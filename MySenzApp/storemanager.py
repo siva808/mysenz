@@ -11,6 +11,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from asgiref.sync import sync_to_async
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q
+from .permission import IsAdminRole
 
 #return Response({"success": False, "error": "Invalid credentials"})
 @api_view(["GET"])
@@ -62,6 +63,7 @@ class CategoryListView(generics.ListAPIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def create_store_manager(request):
     serializer = StoreConfigSerializer(data=request.data.get("details"))
     if not serializer.is_valid():
@@ -258,41 +260,88 @@ class ServiceAPIView(APIView):
         category.delete()
         return Response({"success": True,"message": "Services deleted successfully"}, status=status.HTTP_200_OK)
     
+from django.db import transaction    
 class ManagerServiceAPIView(APIView):
-    def get(self, request):
-        manager_id = request.query_params.get("id")
-        if manager_id:
-            manager = get_object_or_404(
-                StoreManager.objects.select_related("store", "category", "service", "user"),
-                pk=manager_id
-            )
-            serializer = StoreManagerserviceSerializer(manager)
-            return Response({"success": True,"message": "Manager details retrieved successfully",
+  
+    def post(self, request):
+        manager_id = request.data.get("manager")
+        category_name = request.data.get("category_name")
+        services_name = request.data.get("services_name", [])
+
+        if not manager_id or not category_name:
+            return Response({
+                "success": False,
+                "message": "manager and category_name are required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                obj, created = Mangerservices.objects.get_or_create(
+                    manager_id=manager_id,
+                    category_name=category_name,
+                    defaults={
+                        "services_name": services_name
+                    }
+                )
+
+                if not created:
+                    return Response({
+                        "success": False,
+                        "message": "Service already exists for this manager",
+                        "data": StoreManagerServicesSerializer(obj).data
+                    }, status=status.HTTP_208_ALREADY_REPORTED)
+
+                return Response({
+                    "success": True,
+                    "message": "Manager Service created successfully",
+                    "data": StoreManagerServicesSerializer(obj).data
+                }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({
+                "success": False,
+                "message": "Failed to create service",
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+    def put(self, request):
+        service_id = request.query_params.get("id")
+        if not service_id:
+            return Response({"success": False, "message": "id query parameter required"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        service = get_object_or_404(Mangerservices, pk=service_id)
+        serializer = StoreManagerServicesSerializer(service, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "success": True,
+                "message": "Manager Service updated successfully",
                 "data": serializer.data
             }, status=status.HTTP_200_OK)
 
-        managers = StoreManager.objects.select_related("store", "category", "service", "user")
-        serializer = StoreManagerserviceSerializer(managers, many=True)
-        return Response({"success": True,"message": "All managers retrieved successfully",
+        return Response({
+            "success": False,
+            "message": "Validation failed",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request):
+        manager_id = request.query_params.get("manager_id")
+        if manager_id:
+            services = Mangerservices.objects.filter(manager__id=manager_id)
+        else:
+            services = Mangerservices.objects.all()
+        serializer = StoreManagerServicesSerializer(services, many=True)
+        return Response({
+            "success": True,
+            "message": "Manager Services retrieved successfully",
             "data": serializer.data
         }, status=status.HTTP_200_OK)
 
-    def put(self, request):
-        #PUT: Update manager category/service using query param ?id=<uuid>.
-        manager_id = request.query_params.get("id")
-        if not manager_id:
-            return Response({"success": False, "message": "Manager ID is required"},
-                            status=status.HTTP_400_BAD_REQUEST)
 
-        manager = get_object_or_404(StoreManager, pk=manager_id)
-        serializer = StoreManagerServiceUpdateSerializer(manager, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"success": True,"message": "StoreManager updated successfully",
-                "data": serializer.data
-            }, status=status.HTTP_200_OK)
 
-        return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     
 class BookingAPIView(APIView):
     def post(self,request):

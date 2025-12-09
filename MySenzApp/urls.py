@@ -22,7 +22,11 @@ urlpatterns = [
     path("admin/store-manager-active/", UpdateStoreManagerActiveView.as_view(), name="update-store-manager-active"),
     path('admin/categories/', CategoryAPIView.as_view()),
     path("admin/services/",ServiceAPIView.as_view()),
-    path("admin/manager-service/",ManagerServiceAPIView.as_view()),
+    path("admin/manager-service/", ManagerServiceAPIView.as_view()),
+    path("admin/manager-service/<uuid:id>/", ManagerServiceAPIView.as_view()),
+
+
+
     
 
     #booking 

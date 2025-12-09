@@ -146,8 +146,6 @@ class StoreManager(models.Model):
     store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="managers")
     user = models.OneToOneField(AdminUser, on_delete=models.CASCADE, related_name="store_manager")
     is_active = models.BooleanField(default=True)
-    category= models.ForeignKey(Category,on_delete=models.CASCADE)
-    service= models.ForeignKey(Service,on_delete=models.CASCADE)
     manager_name = models.CharField(max_length=150)
     manager_contact = models.CharField(max_length=20)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -157,6 +155,15 @@ class StoreManager(models.Model):
         return f"{self.manager_name} ({self.user.email})"
     class Meta:
         db_table="storemanager"
+        
+class Mangerservices(models.Model):
+    from django.contrib.postgres.fields import ArrayField
+    manager = models.ForeignKey(StoreManager, on_delete=models.CASCADE, related_name="services")
+    category_name = models.CharField(max_length=150)
+    services_name = ArrayField(models.CharField(max_length=150), default=list)
+    is_active = models.BooleanField(default=True)
+    class Meta:
+        db_table="managerservices"
 
 
 class AppointmentStatusLog(models.Model):
@@ -200,5 +207,3 @@ class MedicineRequest(models.Model):
 
 #     def __str__(self):
 #         return "Global Settings"
-
-

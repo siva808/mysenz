@@ -31,31 +31,30 @@ def admin_login(request):
         refresh = RefreshToken.for_user(user)
         access_token = str(refresh.access_token)
         refresh_token = str(refresh)
+
         username = None
+        manager_id = None  # FIX – define default
+
         if hasattr(user, "store_manager"):
             username = user.store_manager.manager_name
-            manager_id = str(user.store_manager.id) 
-        # elif hasattr(user, "customer_profile"):
-        #     username = user.customer_profile.name
+            manager_id = str(user.store_manager.id)
         else:
-            username = user.email 
+            username = user.email
 
         return Response({
             "success": True,
             "access": access_token,
-            "refres":refresh_token,
+            "refresh": refresh_token,
             "user": {
                 "uuid": str(user.id),
                 "email": user.email,
-                "role": user.role,
-                 "username": username,
-                 "manager_id":manager_id
-            
+                "role": user.role,   
+                "username": username,
+                "manager_id": manager_id
             }
         })
 
     return Response({"success": False, "message": "Invalid credentials"})
-
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -67,7 +66,7 @@ def forgot_password(request):
         return Response({"error": "User not found"}, status=404)
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = token_generator.make_token(user)
-    reset_link = f"http://localhost:8000/api/auth/reset-password/{uid}/{token}/"
+    reset_link = f"http://192.168.1.22:8000/api/auth/reset-password/{uid}/{token}/"
     send_mail(
         "Password Reset",
         f"It happens to the best of us.Tap the link below and Mysenze will guide you to a fresh new password: {reset_link}",
