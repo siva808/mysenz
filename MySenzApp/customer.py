@@ -7,8 +7,8 @@ from django.core.mail import send_mail
 from rest_framework import status, permissions
 from django.conf import settings
 
-User = get_user_model()
 
+User = get_user_model()
 from rest_framework_simplejwt.tokens import RefreshToken
 
 class CustomerSignupView(APIView):
@@ -18,24 +18,35 @@ class CustomerSignupView(APIView):
         if serializer.is_valid():
             try:
                 user = serializer.save()
+                refresh = RefreshToken.for_user(user)
+                access_token = str(refresh.access_token)
+                refresh_token = str(refresh)
                 subject= "Welcome to our PY OLLIVE"
                 message=f"Hi {user.email},\n\nthank you for Signing"
                 from_email = settings.DEFAULT_FROM_EMAIL
                 recipient_list = [user.email]
                 send_mail(subject,message,from_email,recipient_list,fail_silently=False)
-                return Response(serializer.to_representation(user), status=status.HTTP_201_CREATED)
+                return Response({
+                    "success": True,
+                    "message": "Signup successful",
+                    "access": access_token,
+                    "refresh": refresh_token,
+                    "user": serializer.to_representation(user)
+                }, status=status.HTTP_201_CREATED)
             except Exception:
                 return Response({"success":False,"message":"Email already Exists"},status=status.HTTP_400_BAD_REQUEST)
         return Response({"success": False, "message": " signup failed", "errors": serializer.errors},status=status.HTTP_400_BAD_REQUEST)
 
 class CustomerLoginView(APIView):
     permission_classes = [permissions.AllowAny]
-
     def post(self, request):
         serializer = CustomerLoginSerializer(data=request.data)
         if serializer.is_valid():
-            return Response(serializer.validated_data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            user = serializer.validated_data["user"]
+            return Response({"sucess":True,"message":"Login Sucessfully",
+                             "user": {"id": user.id,"email": user.email,"role": user.role}},
+                            status=status.HTTP_200_OK)
+        return Response({"sucess":False,"message":" Validation error"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CustomerLogoutView(APIView):
