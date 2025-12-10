@@ -2,6 +2,7 @@ import uuid,random,string
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.contrib.postgres.fields import ArrayField
 
 class AdminUserManager(BaseUserManager):
     def create_user(self, email, password=None, role="customer", **extra_fields):
@@ -103,40 +104,47 @@ class Service(models.Model):
 
 
 class Booking(models.Model):
-    APPOINTMENT_TYPES = (
-        ('home', 'Home Care'),
-        ('instore', 'In-Store'),
+    PAYMENT_STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("paid", "Paid"),
+        ("failed", "Failed"),
+        ("refunded", "Refunded"),
     )
-    STATUS_CHOICES = (
-        ('new booking', 'New Booking'),
-        ('contacted', 'Contacted'),
-        ('follow-up', 'Follow-Up'),
-        ('intersted', 'Intersted'),
-        ('not intersted','Not Intersted'),
-        ('converted','Converted'),
-        ('lost','LOst'),
 
+    STATUS_CHOICES = (
+        ("new booking", "New Booking"),
+        ("contacted", "Contacted"),
+        ("follow-up", "Follow-Up"),
+        ("interested", "Interested"),
+        ("not interested", "Not Interested"),
+        ("converted", "Converted"),
+        ("lost", "Lost"),
     )
+
     booking_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user=models.ForeignKey(Customer,on_delete=models.CASCADE)
-    store=models.ForeignKey(Store,on_delete=models.CASCADE)
-    category = models.ForeignKey(Category, on_delete=models.CASCADE)
-    service = models.ForeignKey(Service, on_delete=models.CASCADE)
-    appointment_type = models.CharField(max_length=20, choices=APPOINTMENT_TYPES)
-    date = models.DateField()
-    slot = models.ForeignKey(TimeSlot, on_delete=models.CASCADE)
+    user = models.ForeignKey("Customer", on_delete=models.CASCADE)
+    customer_mobile = models.CharField(max_length=15)
+    store = models.ForeignKey("Store", on_delete=models.CASCADE)
+    category = models.ForeignKey("Category", on_delete=models.CASCADE)
+
+    # Many services per booking
+    services = models.ManyToManyField("Service", related_name="bookings")
+
+    appointment_type = models.CharField(max_length=20)
+    appointment_date = models.DateField()
+    appointment_time = ArrayField(models.CharField(max_length=150), default=list)
+
     booking_address = models.TextField(blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new booking')
-    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="new booking")
+    booking_date = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    alert_type =models.CharField(max_length=150)#alerte message
-     
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default="pending")
+
     def __str__(self):
-        return f"Appointment {self.id} - {self.service.name}"
-    
+        return f"Booking {self.booking_id} - Services: {[s.name for s in self.services.all()]}"
+
     class Meta:
-        db_table="booking"
-        
+        db_table = "booking"
 ser = get_user_model()
 def generate_passcode(length=6):
     return ''.join(random.choices(string.digits, k=length)) 
@@ -157,9 +165,8 @@ class StoreManager(models.Model):
         db_table="storemanager"
         
 class Mangerservices(models.Model):
-    from django.contrib.postgres.fields import ArrayField
     manager = models.ForeignKey(StoreManager, on_delete=models.CASCADE, related_name="services")
-    category_name = models.CharField(max_length=150)
+    category = models.ForeignKey(Category, on_delete=models.CASCADE)
     services_name = ArrayField(models.CharField(max_length=150), default=list)
     is_active = models.BooleanField(default=True)
     class Meta:

@@ -2,16 +2,13 @@ from .serializers import *
 from .models import *
 from .notification import NotificationService
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny,IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status,generics,permissions
 from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from asgiref.sync import sync_to_async
-from rest_framework.pagination import PageNumberPagination
-from django.db.models import Q
-from .permission import IsAdminRole
+from django.db import transaction 
 
 #return Response({"success": False, "error": "Invalid credentials"})
 @api_view(["GET"])
@@ -260,9 +257,10 @@ class ServiceAPIView(APIView):
         category.delete()
         return Response({"success": True,"message": "Services deleted successfully"}, status=status.HTTP_200_OK)
     
-from django.db import transaction    
+
+
 class ManagerServiceAPIView(APIView):
-  
+
     def post(self, request):
         manager_id = request.data.get("manager")
         category_name = request.data.get("category_name")
@@ -276,12 +274,12 @@ class ManagerServiceAPIView(APIView):
 
         try:
             with transaction.atomic():
+                category = get_object_or_404(Category, name=category_name)
+
                 obj, created = Mangerservices.objects.get_or_create(
                     manager_id=manager_id,
-                    category_name=category_name,
-                    defaults={
-                        "services_name": services_name
-                    }
+                    category=category,
+                    defaults={"services_name": services_name}
                 )
 
                 if not created:
@@ -303,7 +301,6 @@ class ManagerServiceAPIView(APIView):
                 "message": "Failed to create service",
                 "error": str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
-
 
     def put(self, request):
         service_id = request.query_params.get("id")
@@ -333,6 +330,7 @@ class ManagerServiceAPIView(APIView):
             services = Mangerservices.objects.filter(manager__id=manager_id)
         else:
             services = Mangerservices.objects.all()
+
         serializer = StoreManagerServicesSerializer(services, many=True)
         return Response({
             "success": True,
@@ -342,78 +340,50 @@ class ManagerServiceAPIView(APIView):
 
 
 
-    
-class BookingAPIView(APIView):
-    def post(self,request):
-        serializer= BokkingCreateSerializer(data=request.data)
-        if serializer.is_valid():
-            booking=serializer.save()
-            NotificationService.notify_booking_update(booking)
-            return Response({"success":True,"message":"booking created" ,"data":serializer.data},status=status.HTTP_201_CREATED)
-        return Response({"success":False,"message":"fille the all field!.."},status=status.HTTP_400_BAD_REQUEST)
-    
-    def get(self, request):
-        booking_id = request.query_params.get("id")
-        if booking_id:
-            booking = get_object_or_404(Booking, pk=booking_id)  
-            serializer = BookingGetSerilaizer(booking)
-            return Response({"success": True,"message": "Booking retrieved successfully",
-                "data": serializer.data
-            }, status=status.HTTP_200_OK)
 
-        bookings = Booking.objects.all().order_by("booking_id") 
-        serializer = BookingGetSerilaizer(bookings, many=True)
+    
+from datetime import date, timedelta
+class BookingSearchView(APIView):
+    def get(self, request):
+        store_id = request.query_params.get("store_id")
+        date_filter = request.query_parms.get("data_filter")
+        custom_date = request.query_parms.get("custom_date")
+
+
+        if store_id :
+            bookings = Booking.objects.filter(store__id=store_id)
+
+        today = date.today()
+        tomorrow = today + timedelta(day=1)
+        first_day_last_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+        last_day_last_month = today.replace(day=1) - timedelta(days=1)
+
+        if date_filter =="today":
+            bookings = bookings.filter(appointment_date=today)
+        elif date_filter =="tomorrow":
+            bookings = bookings.filter(appointment_date=tomorrow)
+        elif date_filter =="future":
+            bookings = bookings.filter(appointment_date__gt=today)
+        elif date_filter == "last_month":
+            bookings = bookings.filter(
+                appointment_date__gte=first_day_last_month,
+                appointment_date__lte= last_day_last_month
+            )
+        elif date_filter == "custom" and custom_date:
+            try:
+                custom_date_obj = date.fromisoformat(custom_date)
+                bookings = bookings.filter(appointment_date=custom_date_obj)
+            except ValueError:
+                return Response({
+                    "success": False,
+                    "message": "Invalid custom_date format. Use YYYY-MM-DD."
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+
+        serializer = BokkingSerializer(bookings, many=True)
         return Response({
             "success": True,
-            "message": "All bookings retrieved successfully",
-            "data": serializer.data
+            "message": "Bookings retrieved successfully",
+            "data": serializer.data ,
         }, status=status.HTTP_200_OK)
-    def put(self, request):
-        booking_id=request.query_params.get("id")
-        if not booking_id:
-            return Response({"success":False,"message":"Data required!."},status=status.HTTP_404_NOT_FOUND)
-        booking =get_object_or_404(Booking, pk=booking_id)
-        serializer =Bookingupdateserializer(booking,data=request.data,partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"success":True,"message":"success","data":serializer.data},status=status.HTTP_200_OK)
-        return Response({"success":True,"message":"success","errors":serializer.errors},status=status.HTTP_200_OK)
-
-
-
-class BookingSearchView(APIView):
-    pagination_class = PageNumberPagination
-    
-    def get(self, request):
-        search = request.GET.get("search")
-        status_filter = request.GET.get("status")
-        service_filter = request.GET.get("service")
-
-        # ✅ Start with empty Q object
-        query = Q()
-
-        if search:
-            query &= Q(user__name__icontains=search) | Q(store__store_name__icontains=search)
-        if status_filter:
-            query &= Q(status=status_filter)
-        if service_filter:
-            query &= Q(service__name__icontains=service_filter)
-
-        # ✅ Apply query to queryset
-        qs = Booking.objects.filter(query)
-
-        try:
-            if not qs.exists():
-                return Response({"message": "No data found"}, status=status.HTTP_404_NOT_FOUND)
-
-            paginator = self.pagination_class()
-            page = paginator.paginate_queryset(qs, request, view=self)
-            if page is not None:
-                serializer = BookingSearchSerializer(page, many=True)
-                return paginator.get_paginated_response(serializer.data)
-
-            serializer = BookingSearchSerializer(qs, many=True)
-            return Response(serializer.data)
-
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        

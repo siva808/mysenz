@@ -6,7 +6,8 @@ from rest_framework.authtoken.models import Token
 from django.core.mail import send_mail
 from rest_framework import status, permissions
 from django.conf import settings
-
+from .notification import NotificationService
+from django.shortcuts import get_object_or_404
 
 User = get_user_model()
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -81,3 +82,42 @@ class ForgotPasswordView(APIView):
             return Response({"success": True, "message": "Reset code sent to email"})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+class BookingAPIView(APIView):
+
+    def post(self, request):
+        serializer = BokkingSerializer(data=request.data)
+        if serializer.is_valid():
+            booking = serializer.save()
+            return Response({
+                "success": True,
+                "message": "Booking created successfully",
+                "data": BokkingSerializer(booking).data
+            }, status=status.HTTP_201_CREATED)
+        return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request, booking_id=None):
+        if booking_id:
+            booking = get_object_or_404(Booking, pk=booking_id)
+            serializer = BokkingSerializer(booking)
+            return Response({"success": True, "data": serializer.data}, status=status.HTTP_200_OK)
+        bookings = Booking.objects.all()
+        serializer = BokkingSerializer(bookings, many=True)
+        return Response({"success": True, "data": serializer.data}, status=status.HTTP_200_OK)
+
+    def put(self, request, booking_id):
+        booking = get_object_or_404(Booking, pk=booking_id)
+        serializer = BokkingSerializer(booking, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "success": True,
+                "message": "Booking updated successfully",
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
+        return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, booking_id):
+        booking = get_object_or_404(Booking, pk=booking_id)
+        booking.delete()
+        return Response({"success": True, "message": "Booking deleted"},status=status.HTTP_204_NO_CONECTED)

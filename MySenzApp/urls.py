@@ -25,15 +25,13 @@ urlpatterns = [
     path("admin/manager-service/", ManagerServiceAPIView.as_view()),
     path("admin/manager-service/<uuid:id>/", ManagerServiceAPIView.as_view()),
 
-
-
     
 
     #booking 
     path("admin/store-category/",CategoryListView.as_view(),name="store_catogery_list"),
     path("admin/store-service-list/",ServiceListView.as_view(),name="store_serice_list"),
     path("admin/store-timeslot-list/",TimeSlotListView.as_view(),name="store_timeslot_list"),
-    path("admin/manager-booking/",BookingAPIView.as_view()),
+    path("admin/customer-booking/",BookingAPIView.as_view()),
     path("admin/booking-search/",BookingSearchView.as_view()),
 
     #cutomer 
