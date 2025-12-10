@@ -109,29 +109,12 @@ class StoreManagerserviceSerializer(serializers.ModelSerializer):
             "is_active","created_at","updated_at"]
         
 
-
 class StoreManagerServicesSerializer(serializers.ModelSerializer):
-
-    def validate(self, attrs):
-        category_name = attrs.get("category_name")
-        services_name = attrs.get("services_name")
-
-        exists = Mangerservices.objects.filter(
-            category_name=category_name,
-            services_name=services_name
-        ).exists()
-
-        if exists:
-            raise serializers.ValidationError(
-                "This manager service already exists"
-            )
-
-        return attrs
+    category_name = serializers.CharField(source="category.name", read_only=True)
 
     class Meta:
         model = Mangerservices
-        fields = ["id","manager", "category_name", "services_name"]
-
+        fields = ["id", "manager", "category", "category_name", "services_name", "is_active"]
 
 
     
@@ -202,11 +185,20 @@ class BookingSearchSerializer(serializers.ModelSerializer):
         field= '__all__'
         
 
-class BokkingCreateSerializer(serializers.ModelSerializer):
+class BokkingSerializer(serializers.ModelSerializer):
+    services = serializers.PrimaryKeyRelatedField(queryset=Service.objects.all(), many=True)
+    service_names = serializers.SerializerMethodField()
+
+    def get_service_names(self, obj):
+        return [service.name for service in obj.services.all()]
     
     class Meta:
         model = Booking
-        fields =["user","store","category","service","appointment_type","booking_address"]
+        fields = ["booking_id","user","store","category","services","service_names",  "appointment_type","appointment_date","appointment_time","booking_address","status",
+            "payment_status","booking_date","updated_at","customer_mobile",
+        ]
+
+        read_only_fields = ["booking_id", "booking_date", "updated_at"]
 
 class BookingGetSerilaizer(serializers.ModelSerializer):
     class Meta:
@@ -230,7 +222,3 @@ class BookingDetailsSerializer(serializers.ModelSerializer):
         fields = ["booking_id","service","category",""]
         read_only_field=["customer_name","customer_email"]
         
-class BookingcreateSerializer(serializers.ModelSerializer):
-     class meta:
-         model=Booking
-         field='__all__'
