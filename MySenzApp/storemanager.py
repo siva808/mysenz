@@ -9,8 +9,10 @@ from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db import transaction 
+from .crud import *
+from rest_framework.parsers import JSONParser
 
-#return Response({"success": False, "error": "Invalid credentials"})
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])   
 def get_store_manager_profile(request):
@@ -72,14 +74,11 @@ def create_store_manager(request):
             store_contact=data["storeContact"],
             store_address=data["storeAddress"]
         )
-    # Create AdminUser for manager
         manager_user = AdminUser.objects.create_user(
             email=data["managerEmail"],
             password=data["managerPassword"],
             role="manager"
         )
-
-        # Create StoreManager
         store_manager = StoreManager.objects.create(
             store=store,
             user=manager_user,
@@ -143,13 +142,16 @@ class UpdateStoreManagerActiveView(APIView):
 
 class CategoryAPIView(APIView):
     def get(self, request):
+
         category_id = request.query_params.get("id")
+
         try:
             if category_id:
+
                 category = get_object_or_404(Category, pk=category_id)
                 serializer = ServiceCategorySerializer(category)
-                return Response({"success": True,"message": "Category retrieved successfully","data": serializer.data
-                }, status=status.HTTP_200_OK)
+
+                return Response({"success": True,"message": "Category retrieved successfully","data": serializer.data}, status=status.HTTP_200_OK)
 
             categories = Category.objects.all().order_by("id")
 
@@ -302,27 +304,6 @@ class ManagerServiceAPIView(APIView):
                 "error": str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
 
-    def put(self, request):
-        service_id = request.query_params.get("id")
-        if not service_id:
-            return Response({"success": False, "message": "id query parameter required"},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        service = get_object_or_404(Mangerservices, pk=service_id)
-        serializer = StoreManagerServicesSerializer(service, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({
-                "success": True,
-                "message": "Manager Service updated successfully",
-                "data": serializer.data
-            }, status=status.HTTP_200_OK)
-
-        return Response({
-            "success": False,
-            "message": "Validation failed",
-            "errors": serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
 
     def get(self, request):
         manager_id = request.query_params.get("manager_id")
@@ -333,57 +314,167 @@ class ManagerServiceAPIView(APIView):
 
         serializer = StoreManagerServicesSerializer(services, many=True)
         return Response({
-            "success": True,
-            "message": "Manager Services retrieved successfully",
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
-
-
-
-
+                "success": True,
+                "message": "Manager Services retrieved successfully",
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
     
+
+
+        
 from datetime import date, timedelta
 class BookingSearchView(APIView):
-    def get(self, request):
-        store_id = request.query_params.get("store_id")
-        date_filter = request.query_parms.get("data_filter")
-        custom_date = request.query_parms.get("custom_date")
 
+    def post(self, request):
+    
+        json_request = JSONParser().parse(request)
+        appointment_type = json_request.get("appointment_type")
+        store_id = json_request.get("store_id")
+        detail_method = json_request.get("detail_method")
+        start_date = json_request.get("start_date")
+        end_date = json_request.get("end_date")
+        
+        if not store_id:
+            return Response({"success": False,"message": "store_id is required" }, status=status.HTTP_400_BAD_REQUEST)
 
-        if store_id :
-            bookings = Booking.objects.filter(store__id=store_id)
+        try:
+            store_uuid = uuid.UUID(store_id)
+        except:
+            return Response({"success": False,"message": "Invalid store_id UUID"},status=status.HTTP_400_BAD_REQUEST)
+
+    
+        bookings = Booking.objects.filter(store__id=store_uuid)
 
         today = date.today()
-        tomorrow = today + timedelta(day=1)
+        tomorrow = today + timedelta(days=1)
         first_day_last_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
         last_day_last_month = today.replace(day=1) - timedelta(days=1)
 
-        if date_filter =="today":
+        if detail_method == "today":
             bookings = bookings.filter(appointment_date=today)
-        elif date_filter =="tomorrow":
-            bookings = bookings.filter(appointment_date=tomorrow)
-        elif date_filter =="future":
-            bookings = bookings.filter(appointment_date__gt=today)
-        elif date_filter == "last_month":
-            bookings = bookings.filter(
-                appointment_date__gte=first_day_last_month,
-                appointment_date__lte= last_day_last_month
-            )
-        elif date_filter == "custom" and custom_date:
-            try:
-                custom_date_obj = date.fromisoformat(custom_date)
-                bookings = bookings.filter(appointment_date=custom_date_obj)
-            except ValueError:
-                return Response({
-                    "success": False,
-                    "message": "Invalid custom_date format. Use YYYY-MM-DD."
-                }, status=status.HTTP_400_BAD_REQUEST)
             
 
-        serializer = BokkingSerializer(bookings, many=True)
-        return Response({
-            "success": True,
-            "message": "Bookings retrieved successfully",
-            "data": serializer.data ,
-        }, status=status.HTTP_200_OK)
+        elif detail_method == "tomorrow":
+            bookings = bookings.filter(appointment_date=tomorrow)
+            
+        elif detail_method == "future":
+            bookings = bookings.filter(appointment_date__gt=today)
+           
+
+        elif detail_method == "last_month":
+            bookings = bookings.filter(
+                appointment_date__gte=first_day_last_month,
+                appointment_date__lte=last_day_last_month
+            )
+            
+
+        elif detail_method == "custom":
+            if not start_date or not end_date:
+                return Response({"success": False,"message": "start_date and end_date are required for custom filter"},status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                start_date_obj = date.fromisoformat(start_date)
+                end_date_obj = date.fromisoformat(end_date)
+            except:
+                return Response({"success": False,"message": "Invalid date format. Use YYYY-MM-DD."},status=status.HTTP_400_BAD_REQUEST)
+
+            bookings = bookings.filter(
+                appointment_date__gte=start_date_obj,
+                appointment_date__lte=end_date_obj
+            )
+            
         
+        if appointment_type:
+            bookings = bookings.filter(appointment_type=appointment_type)
+
+        bookings_count = bookings.count()
+        
+        serializer = BookingDashboardSerializer(bookings, many=True)
+        return Response({"success": True, "message": "Bookings retrieved successfully",
+                         "count": bookings_count, "data": serializer.data}, status=status.HTTP_200_OK)
+    
+
+
+@api_view(["PUT"])
+def update_manager_services(request):
+    try:
+        manager_id = request.data.get("manager_id")     
+        category_id = request.data.get("category_id")
+        services_name = request.data.get("services_name")
+        is_active = request.data.get("is_active")
+
+        if not manager_id or not category_id:
+            return Response(
+                {"sucess":False,"error": "manager_id and category_id are required"},
+                status=400
+            )
+
+        try:
+            category = Category.objects.get(id=category_id)
+        except Category.DoesNotExist:
+            return Response({"sucess":False,"error": "Category not found"}, status=404)
+
+        try:
+            manager_service = Mangerservices.objects.get(manager_id=manager_id,category=category)
+        except Mangerservices.DoesNotExist:
+            return Response({"sucess":False,"error": "Manager service not found"}, status=404)
+
+        if services_name is not None:
+            manager_service.services_name = services_name
+
+        if is_active is not None:
+            manager_service.is_active = is_active
+
+        manager_service.save()
+
+        return Response(
+            { "success": True,
+                "message": "Manager service updated successfully",
+                "data": {
+                    "manager_id": manager_id,
+                    "category": category_id,
+                    "services_name": manager_service.services_name,
+                    "is_active": manager_service.is_active,
+                }
+            },
+            status=200
+        )
+
+    except Exception as e:
+        return Response({"sucess":False,"error": str(e)}, status=500)
+   
+
+
+@api_view(["POST"])
+def bookingscount(request):
+    json_request = JSONParser().parse(request)
+    store_id = json_request.get("store_id")
+    if not store_id:
+        return Response({"success": False,"message": "store_id is required" }, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        store_uuid = uuid.UUID(store_id)
+    except: 
+        return Response({"success": False,"message": "Invalid store_id UUID"},status=status.HTTP_400_BAD_REQUEST)     
+    bookings = Booking.objects.filter(store__id=store_uuid)
+    total_bookings = bookings.count()
+
+    today = date.today()
+    today_bookings = bookings.filter(appointment_date=today).count()
+    tomorrow = today + timedelta(days=1)
+    tomarrow_bookings = bookings.filter(appointment_date=tomorrow).count()
+    
+    future_bookings = bookings.filter(appointment_date__gt=today).count()
+    first_day_last_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    last_day_last_month = today.replace(day=1) - timedelta(days=1)
+    last_month_bookings = bookings.filter(
+        appointment_date__gte=first_day_last_month,
+        appointment_date__lte=last_day_last_month
+    ).count()
+    data = {
+         "total_bookings" : total_bookings,
+         "today_bookings" : today_bookings,
+        "future_bookings" : future_bookings,
+         "tomarrow_bookings" : tomarrow_bookings,
+         "last_month_bookings" : last_month_bookings
+    }
+    return Response({"success": True, "data": data}, status=status.HTTP_200_OK)

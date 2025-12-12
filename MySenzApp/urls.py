@@ -23,7 +23,9 @@ urlpatterns = [
     path('admin/categories/', CategoryAPIView.as_view()),
     path("admin/services/",ServiceAPIView.as_view()),
     path("admin/manager-service/", ManagerServiceAPIView.as_view()),
-    path("admin/manager-service/<uuid:id>/", ManagerServiceAPIView.as_view()),
+    #path("admin/manager-update-service/",update_manager_services,name="manager_update_services"),
+    
+    path("admin/manager-service-update/", update_manager_services,),
 
     
 
@@ -32,7 +34,7 @@ urlpatterns = [
     path("admin/store-service-list/",ServiceListView.as_view(),name="store_serice_list"),
     path("admin/store-timeslot-list/",TimeSlotListView.as_view(),name="store_timeslot_list"),
     path("admin/customer-booking/",BookingAPIView.as_view()),
-    path("admin/booking-search/",BookingSearchView.as_view()),
+    path("admin/booking-details/",BookingSearchView.as_view()),
 
     #cutomer 
     path("admin/customer-signup/", CustomerSignupView.as_view(), name="customer-signup"),
@@ -40,5 +42,9 @@ urlpatterns = [
     path("admin/cutomer-logout/", CustomerLogoutView.as_view(), name="customer-logout"),
     path("admin/customer-forgot-password/", ForgotPasswordView.as_view(), name="forgot-password"),
 
+    #gentral
+    path("admin/bookingdropdown/", bookingdropdown),
+    path("admin/paymentdropdown/", paymentdropdown),
+    path("admin/bookings-count/", bookingscount),
 ]
 

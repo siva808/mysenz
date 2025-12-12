@@ -34,10 +34,14 @@ def admin_login(request):
 
         username = None
         manager_id = None  # FIX – define default
+        store_id = None
 
         if hasattr(user, "store_manager"):
             username = user.store_manager.manager_name
             manager_id = str(user.store_manager.id)
+
+            if hasattr(user.store_manager, "store") and user.store_manager.store:
+                store_id = str(user.store_manager.store.id)
         else:
             username = user.email
 
@@ -50,7 +54,8 @@ def admin_login(request):
                 "email": user.email,
                 "role": user.role,   
                 "username": username,
-                "manager_id": manager_id
+                "manager_id": manager_id,
+                "store_id": store_id,
             }
         })
 
@@ -239,6 +244,22 @@ class AdminMedicineRequestStatusUpdateView(generics.UpdateAPIView):
     serializer_class = MedicineRequestStatusUpdateSerializer
     permission_classes = [IsAdminOrStaff]
     queryset = MedicineRequest.objects.all()
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def bookingdropdown(request):
+    #data = list(BookingStatus.objects.values("id", "status"))
+    data = list(BookingStatus.objects.values_list("status", flat=True))
+    return Response({"success": True, "data": data}, status=status.HTTP_200_OK)
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def paymentdropdown(request):
+    #data = list(BookingStatus.objects.values("id", "status"))
+    data = list(PaymentStatus.objects.values_list("status", flat=True))
+    return Response({"success": True, "data": data}, status=status.HTTP_200_OK)
+
+
+
 
 
 

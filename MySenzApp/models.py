@@ -104,22 +104,6 @@ class Service(models.Model):
 
 
 class Booking(models.Model):
-    PAYMENT_STATUS_CHOICES = (
-        ("pending", "Pending"),
-        ("paid", "Paid"),
-        ("failed", "Failed"),
-        ("refunded", "Refunded"),
-    )
-
-    STATUS_CHOICES = (
-        ("new booking", "New Booking"),
-        ("contacted", "Contacted"),
-        ("follow-up", "Follow-Up"),
-        ("interested", "Interested"),
-        ("not interested", "Not Interested"),
-        ("converted", "Converted"),
-        ("lost", "Lost"),
-    )
 
     booking_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey("Customer", on_delete=models.CASCADE)
@@ -135,16 +119,28 @@ class Booking(models.Model):
     appointment_time = ArrayField(models.CharField(max_length=150), default=list)
 
     booking_address = models.TextField(blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="new booking")
+    status = models.CharField(max_length=20, default="new booking")
     booking_date = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default="pending")
+    payment_status = models.CharField(max_length=20, default="pending")
 
     def __str__(self):
         return f"Booking {self.booking_id} - Services: {[s.name for s in self.services.all()]}"
 
     class Meta:
         db_table = "booking"
+
+
+class BookingStatus(models.Model):
+    status = models.CharField(max_length=50)
+    class Meta:
+        db_table="bookingstatus"
+
+class PaymentStatus(models.Model):
+    status = models.CharField(max_length=50)
+    class Meta:
+        db_table="paymentstatus"
+
 ser = get_user_model()
 def generate_passcode(length=6):
     return ''.join(random.choices(string.digits, k=length)) 
@@ -171,7 +167,7 @@ class Mangerservices(models.Model):
     is_active = models.BooleanField(default=True)
     class Meta:
         db_table="managerservices"
-
+    
 
 class AppointmentStatusLog(models.Model):
     appointment = models.ForeignKey(Booking, on_delete=models.CASCADE)
