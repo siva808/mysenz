@@ -115,7 +115,19 @@ class StoreManagerServicesSerializer(serializers.ModelSerializer):
     class Meta:
         model = Mangerservices
         fields = ["id", "manager", "category", "category_name", "services_name", "is_active"]
+class StoreManagerServicesSerializerupdate(serializers.ModelSerializer):
+    category_name = serializers.CharField(source="category.name")
 
+    class Meta:
+        model = Mangerservices
+        fields = ["id", "manager", "category", "category_name", "services_name", "is_active"]
+        
+class ManagerServicesSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source="category.name", read_only=True)
+
+    class Meta:
+        model = Mangerservices
+        fields = ["category_name", "services_name", "is_active"]
 
     
 class ManagerCategoryServiceSerializer(serializers.ModelSerializer):
@@ -188,6 +200,7 @@ class BookingSearchSerializer(serializers.ModelSerializer):
 class BokkingSerializer(serializers.ModelSerializer):
     services = serializers.PrimaryKeyRelatedField(queryset=Service.objects.all(), many=True)
     service_names = serializers.SerializerMethodField()
+    
 
     def get_service_names(self, obj):
         return [service.name for service in obj.services.all()]
@@ -195,10 +208,10 @@ class BokkingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = ["booking_id","user","store","category","services","service_names",  "appointment_type","appointment_date","appointment_time","booking_address","status",
-            "payment_status","booking_date","updated_at","customer_mobile",
+            "payment_status","booking_date","customer_mobile",
         ]
 
-        read_only_fields = ["booking_id", "booking_date", "updated_at"]
+        read_only_fields = ["booking_id", "booking_date",]
 
 class BookingGetSerilaizer(serializers.ModelSerializer):
     class Meta:
@@ -222,3 +235,61 @@ class BookingDetailsSerializer(serializers.ModelSerializer):
         fields = ["booking_id","service","category",""]
         read_only_field=["customer_name","customer_email"]
         
+class BookingDashboardSerializer(serializers.ModelSerializer):
+    service_names = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
+    customer_email = serializers.SerializerMethodField()
+    category_name = serializers.SerializerMethodField()
+    total_service_amount = serializers.SerializerMethodField()
+    booking_code = serializers.SerializerMethodField()
+    booking_date_formatted = serializers.SerializerMethodField()
+
+    def get_service_names(self, obj):
+        return [service.name for service in obj.services.all()]
+
+    def get_customer_name(self, obj):
+        
+        customer = getattr(obj.user, "customer", None)
+        return customer.name if customer else None
+
+    def get_customer_email(self, obj):
+        
+        return getattr(obj.user, "email", None)
+
+    def get_category_name(self, obj):
+        return obj.category.name if obj.category else None
+
+    def get_total_service_amount(self, obj):
+        services = obj.services.all()
+        total = sum([s.price for s in services if hasattr(s, "price")])
+        return float(total)
+
+    def get_booking_code(self, obj):
+        
+        short = str(obj.booking_id).replace("-", "")[:4].upper()
+        return f"BK{short}"
+
+    def get_booking_date_formatted(self, obj):
+        return obj.booking_date.strftime("%Y-%m-%d %I:%M:%S %p")
+
+    class Meta:
+        model = Booking
+        fields = ["booking_id","booking_code","booking_date_formatted","appointment_type","appointment_date","appointment_time","status","payment_status","booking_address",
+
+            # Relations
+            "store",
+            "category",
+            "category_name",
+            "services",
+            "service_names",
+
+            # Customer details
+            "customer_mobile",
+            "customer_name",
+            "customer_email",
+
+            # Computed
+            "total_service_amount",
+        ]
+        read_only_fields = ["booking_id", "booking_date"]
+
