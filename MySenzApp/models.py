@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseU
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.contrib.postgres.fields import ArrayField
+# 9841240537
 
 class AdminUserManager(BaseUserManager):
     def create_user(self, email, password=None, role="customer", **extra_fields):
@@ -104,7 +105,7 @@ class Service(models.Model):
 
 
 class Booking(models.Model):
-
+    
     booking_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey("Customer", on_delete=models.CASCADE)
     customer_mobile = models.CharField(max_length=15)

@@ -23,11 +23,14 @@ urlpatterns = [
     path('admin/categories/', CategoryAPIView.as_view()),
     path("admin/services/",ServiceAPIView.as_view()),
     path("admin/manager-service/", ManagerServiceAPIView.as_view()),
+    path("admin/manager-booking-update/",update_manager_booking,name="manager_booking_update"),
+    path("admin/manager-passcode-verify/",passcode_verify,name="verify_manager_passcode"),
     #path("admin/manager-update-service/",update_manager_services,name="manager_update_services"),
     
     path("admin/manager-service-update/", update_manager_services,),
+    path("admin/category-counts/",category_booking_count,name="manager_dashboard"),
 
-    
+
 
     #booking 
     path("admin/store-category/",CategoryListView.as_view(),name="store_catogery_list"),
@@ -35,6 +38,7 @@ urlpatterns = [
     path("admin/store-timeslot-list/",TimeSlotListView.as_view(),name="store_timeslot_list"),
     path("admin/customer-booking/",BookingAPIView.as_view()),
     path("admin/booking-details/",BookingSearchView.as_view()),
+    path("admin/create-booking/",create_booking,name="create_booking"),
 
     #cutomer 
     path("admin/customer-signup/", CustomerSignupView.as_view(), name="customer-signup"),
@@ -46,5 +50,6 @@ urlpatterns = [
     path("admin/bookingdropdown/", bookingdropdown),
     path("admin/paymentdropdown/", paymentdropdown),
     path("admin/bookings-count/", bookingscount),
+    path("admin/service-dropdown/", get_services_by_categoryy),
 ]
 
