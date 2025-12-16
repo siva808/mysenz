@@ -11,6 +11,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db import transaction 
 from .crud import *
 from rest_framework.parsers import JSONParser
+from django.db.models import Count
 
 
 @api_view(["GET"])
@@ -60,6 +61,8 @@ class CategoryListView(generics.ListAPIView):
         except Exception as e:
             return Response({"success": False,"message": "Failed to fetch store managers","errors": str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
     
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -412,12 +415,12 @@ def update_manager_services(request):
         try:
             category = Category.objects.get(id=category_id)
         except Category.DoesNotExist:
-            return Response({"sucess":False,"error": "Category not found"}, status=404)
+            return Response({"sucess":False,"error": "Category not found"})
 
         try:
             manager_service = Mangerservices.objects.get(manager_id=manager_id,category=category)
         except Mangerservices.DoesNotExist:
-            return Response({"sucess":False,"error": "Manager service not found"}, status=404)
+            return Response({"sucess":False,"error": "Manager service not found"})
 
         if services_name is not None:
             manager_service.services_name = services_name
@@ -450,11 +453,11 @@ def bookingscount(request):
     json_request = JSONParser().parse(request)
     store_id = json_request.get("store_id")
     if not store_id:
-        return Response({"success": False,"message": "store_id is required" }, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"success": False,"message": "store_id is required" })
     try:
         store_uuid = uuid.UUID(store_id)
     except: 
-        return Response({"success": False,"message": "Invalid store_id UUID"},status=status.HTTP_400_BAD_REQUEST)     
+        return Response({"success": False,"message": "Invalid store_id UUID"})     
     bookings = Booking.objects.filter(store__id=store_uuid)
     total_bookings = bookings.count()
 
@@ -478,3 +481,157 @@ def bookingscount(request):
          "last_month_bookings" : last_month_bookings
     }
     return Response({"success": True, "data": data}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+def category_booking_count(request):
+    
+    json_request = JSONParser().parse(request)
+    store_id = json_request.get("store_id")
+    category_id = json_request.get("category")
+
+    try:
+        store_uuid = uuid.UUID(store_id)
+    except:
+        return Response({"success": False,"message": "Invalid UUID format"})
+
+    bookings = Booking.objects.filter(store__id=store_uuid,)
+
+    if category_id:
+        bookings = bookings.filter(category__id=category_id)
+        serializer = BookingGetSerializer(bookings, many=True)
+        return Response({
+            "success": True,
+            "message": "Booking details retrieved successfully",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    if category_id:
+        bookings = bookings.filter(category__id=category_id)
+    category_counts = (
+        bookings.values("category__id", "category__name")
+        .annotate(count=Count("booking_id"))
+        .order_by("category__name")
+    )
+    
+
+    return Response({"success": True,"message": "Booking count retrieved successfully",
+        "data": {"booking_count": list(category_counts)}
+    }, status=status.HTTP_200_OK)
+
+
+
+class UpdateBookingAPI(APIView):
+    def put(self, request):
+        booking_id = request.data.get("booking_id")
+
+        if not booking_id:
+            return Response({"sucess":False,"error": "booking_id is required"}, status=400)
+
+        try:
+            booking = Booking.objects.get(booking_id=booking_id)
+        except Booking.DoesNotExist:
+            return Response({"sucess":False,"error": "Booking not found"}, status=404)
+
+        serializer = BookingSerializer(booking, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"sucess":True,"message": "Booking updated"}, status=200)
+
+        return Response(serializer.errors, status=400)
+    
+
+@api_view(["PUT"])
+def update_manager_booking(request):
+    json_request = JSONParser().parse(request)
+
+    booking_id = json_request.get("booking_id")
+    booking_status = json_request.get("status")
+    payment_status = json_request.get("payment_status")
+    appointment_type = json_request.get("appointment_type")
+    appointment_date = json_request.get("appointment_date")
+    appointment_time = json_request.get("appointment_time")
+    service_names = json_request.get("service")
+
+    if not booking_id:
+        return Response({"sucess":False,"error": "booking_id is required"}, status=400)
+
+    try:
+        booking = Booking.objects.get(booking_id=booking_id)
+    except Booking.DoesNotExist:
+        return Response({"error": "Booking not found"}, status=404)
+
+    if booking_status is not None:
+        booking.status = booking_status
+
+    if payment_status is not None:
+        booking.payment_status = payment_status
+
+    if appointment_type is not None:
+        booking.appointment_type = appointment_type
+
+    if appointment_date is not None:
+        booking.appointment_date = appointment_date
+
+    if appointment_time is not None:
+        booking.appointment_time = appointment_time
+
+    booking.save()
+    if service_names is not None:
+        try:
+            services = Service.objects.filter(name__in=service_names)
+
+            if len(services) != len(service_names):
+                return Response(
+                    {"success": False, "error": "One or more service IDs are invalid"},status=400)
+            booking.services.set(services)
+
+        except Exception as e:
+            return Response({"success": False, "error": str(e)}, status=500)
+
+    return Response({"success": True, "message": "Booking updated"}, status=200)
+
+
+@api_view(["POST"])
+def passcode_verify(request):
+
+    data = JSONParser().parse(request)
+    manager_id = data.get("manager_id")
+    passcode = data.get("passcode")
+
+    if not manager_id or not passcode:
+        return Response(
+            {"success": False, "message": "manager_id or passcode required !.. "},)
+    
+    try:
+        manager = StoreManager.objects.get(id=manager_id,passcode=passcode)
+        return Response(
+            {"success": True, "message": "Passcode verified"},
+            status=200
+        )
+
+    except StoreManager.DoesNotExist:
+        return Response(
+            {"success": False, "message": "Invalid passcode"})
+
+
+@api_view(["POST"])
+def get_services_by_categoryy(request):
+    data = JSONParser().parse(request)
+    category_id= data.get("category_id")
+    if not category_id:
+        return Response({"success": False, "message": "category_id is required"})
+    try:
+        services = Service.objects.filter(category__id=category_id)
+        service_names = [s.name for s in services]
+        
+
+        return Response({"success": True, "service_names": service_names})
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
+            status=500
+        )
+    
+
+#Open bill → Add items → Discount → Payment → Check stock → Finalize → Deduct stock

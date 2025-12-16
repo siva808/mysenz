@@ -197,26 +197,55 @@ class BookingSearchSerializer(serializers.ModelSerializer):
         field= '__all__'
         
 
-class BokkingSerializer(serializers.ModelSerializer):
-    services = serializers.PrimaryKeyRelatedField(queryset=Service.objects.all(), many=True)
-    service_names = serializers.SerializerMethodField()
-    
-
-    def get_service_names(self, obj):
-        return [service.name for service in obj.services.all()]
-    
+class BookingSerializer(serializers.ModelSerializer):
+    services = serializers.ListField(child=serializers.UUIDField(), write_only=True)
+    services_details = serializers.SerializerMethodField(read_only=True)
     class Meta:
         model = Booking
-        fields = ["booking_id","user","store","category","services","service_names",  "appointment_type","appointment_date","appointment_time","booking_address","status",
-            "payment_status","booking_date","customer_mobile",
-        ]
+        fields =["booking_id","user","customer_mobile","store","category","services","service_details","appointment_type","appointment_date","appointment_time",
+            "booking_address","status","payment_status",]
+        read_only_fields = ["booking-id"]
 
-        read_only_fields = ["booking_id", "booking_date",]
+    def get_services_details(self, obj):
+        services = obj.services.all()
+        return [{"id": s.id, "name": s.name, "price": s.price} for s in services]
+    
+    def create(self, validated_data):
+        services_data = validated_data.pop("services", [])
+        booking = Booking.objects.create(**validated_data)
+        booking.services.set(services_data)
+        return booking
+    
+    def update(self, instance, validated_data):
+        services_data = validated_data.pop("services", None)
 
-class BookingGetSerilaizer(serializers.ModelSerializer):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+        if services_data is not None:
+            instance.services.set(services_data)
+       
+        return instance
+    
+class CategorySerializer(serializers.ModelSerializer):
     class Meta:
-        model= Booking
-        field ='__all__'
+        model = Category
+        fields = ["id","name","is_active"]
+
+class BookingGetSerializer(serializers.ModelSerializer):
+    user = CustomerSerializer(read_only=True)
+    category = CategorySerializer(read_only=True)
+    services = ServiceSerializer(many=True, read_only=True)
+    booking_date_formatted = serializers.SerializerMethodField()
+
+    def get_booking_date_formatted(self, obj):
+        return obj.booking_date.strftime("%Y-%m-%d %I:%M:%S %p")
+    class Meta:
+        model = Booking
+        fields = '__all__'
+        read_only_fields = ["booking_id", "booking_date_formatted"]
+
 
 class Bookingupdateserializer(serializers.ModelSerializer):
     class Meta:
@@ -266,8 +295,8 @@ class BookingDashboardSerializer(serializers.ModelSerializer):
 
     def get_booking_code(self, obj):
         
-        short = str(obj.booking_id).replace("-", "")[:4].upper()
-        return f"BK{short}"
+        short = str(obj.booking_id).replace("-", "")[:5].upper()
+        return f"ELIX-{short}"
 
     def get_booking_date_formatted(self, obj):
         return obj.booking_date.strftime("%Y-%m-%d %I:%M:%S %p")
@@ -275,19 +304,10 @@ class BookingDashboardSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = ["booking_id","booking_code","booking_date_formatted","appointment_type","appointment_date","appointment_time","status","payment_status","booking_address",
-
             # Relations
-            "store",
-            "category",
-            "category_name",
-            "services",
-            "service_names",
-
+            "store","category","category_name","services","service_names",
             # Customer details
-            "customer_mobile",
-            "customer_name",
-            "customer_email",
-
+            "customer_mobile","customer_name","customer_email",
             # Computed
             "total_service_amount",
         ]
