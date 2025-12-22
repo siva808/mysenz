@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import transaction
 from .models import *
 
 class VendorSerializer(serializers.ModelSerializer): 
@@ -35,9 +36,8 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
         fields = [
             "id", "purchase_order", "product", "medicine",
             "product_name", "brand_name", "molecule",
-            "quantity", "uom", "unit_price", "subtotal"
+            "qty", "uom"
         ]
-        read_only_fields = ["subtotal"]
 
 
 class PurchaseOrderSerializer(serializers.ModelSerializer):
@@ -47,7 +47,6 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         model = PurchaseOrder
         fields = ["id", "po_number", "vendor", "order_date", "status", "total_amount", "items"]
         read_only_fields = ["po_number", "order_date", "total_amount"]
-        
 
     def create(self, validated_data):
         items_data = validated_data.pop("items", [])
@@ -56,3 +55,71 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             PurchaseOrderItem.objects.create(purchase_order=po, **item_data)
         po.recalc_total()
         return po
+
+    
+class IndentItemSerializer(serializers.ModelSerializer): 
+
+    product_name = serializers.CharField(source="product.name", read_only=True) 
+
+    class Meta: 
+        model = IndentItem 
+        fields = ["id", "product", "product_name", "quantity"]
+
+
+
+class IndentSerializer(serializers.ModelSerializer):
+
+    items = IndentItemSerializer(many=True)
+    suggested_vendors = serializers.ListField(child=serializers.DictField(), required=False)
+
+    class Meta:
+        model = Indent
+        fields = ["id", "indent_number", "store", "created_at", "status", "items", "suggested_vendors"]
+        read_only_fields = ["indent_number", "created_at"]
+
+
+    @transaction.atomic
+    def create(self, validated_data):
+        items_data = validated_data.pop("items", [])
+        indent = Indent.objects.create(**validated_data)
+
+        for item in items_data:
+            IndentItem.objects.create(indent=indent, **item)
+
+        vendor_map = {}
+        for ii in indent.items.select_related("product__category").all():
+            cat_name = ii.product.category.name if ii.product and ii.product.category else None
+            if not cat_name:
+                continue
+            for v in Vendor.objects.filter(is_active=True, categories__contains=[cat_name]).only("id", "name"):
+                vendor_map[v.id] = {"id": v.id, "name": v.name}
+
+        indent.suggested_vendors = list(vendor_map.values())
+        indent.save(update_fields=["suggested_vendors"])
+        return indent
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop("items", None)
+        for field in ("store", "status"):
+            if field in validated_data:
+                setattr(instance, field, validated_data[field])
+        instance.save()
+
+        if items_data is not None:
+            instance.items.all().delete()
+            for item in items_data:
+                IndentItem.objects.create(indent=instance, **item)
+
+            # Recompute vendor suggestions
+            vendor_map = {}
+            for ii in instance.items.select_related("product__category").all():
+                cat_name = ii.product.category.name if ii.product and ii.product.category else None
+                if not cat_name:
+                    continue
+                for v in Vendor.objects.filter(is_active=True, categories__contains=[cat_name]).only("id", "name"):
+                    vendor_map[v.id] = {"id": v.id, "name": v.name}
+            instance.suggested_vendors = list(vendor_map.values())
+            instance.save(update_fields=["suggested_vendors"])
+
+        return instance
