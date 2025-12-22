@@ -181,33 +181,3 @@ class AppointmentStatusLog(models.Model):
 
 
 
-class MedicineRequest(models.Model):
-    STATUS_CHOICES = (
-        ('new', 'New'),
-        ('contacted', 'Contacted'),
-        ('closed', 'Closed'),
-    )
-
-    customer_name = models.CharField(max_length=200)
-    customer_mobile = models.CharField(max_length=20)
-    area = models.CharField(max_length=200)
-    pincode = models.CharField(max_length=10, blank=True)
-    requirement_text = models.TextField()
-    prescription_file = models.FileField(upload_to='prescriptions/', blank=True, null=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
-    converted_to_order = models.BooleanField(default=False)
-    bill_number = models.CharField(max_length=100, blank=True)
-    updated_by = models.ForeignKey(AdminUser, null=True, on_delete=models.SET_NULL)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-# class GlobalSettings(models.Model):
-#     alert_mobile_numbers = models.JSONField(default=list)
-#     alert_type = models.CharField(max_length=20, default="sms")  # sms/whatsapp/both
-#     medicine_customer_care_numbers = models.JSONField(default=list)
-#     billing_api_url = models.CharField(max_length=500, blank=True)
-#     billing_api_key = models.CharField(max_length=200, blank=True)
-#     branch_id = models.CharField(max_length=100, blank=True)
-
-#     def __str__(self):
-#         return "Global Settings"

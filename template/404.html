@@ -48,9 +48,9 @@
 <body>
 
 <h1>404 - Page Not Found</h1>
-<p>But you can play Endless Runner 🏃‍♂️</p>
+<p>But you can play Endless Runner 🏃‍♂️..</p>
 <div id="score">Score: 0</div>
-<canvas id="game" width="500" height="300"></canvas>
+<canvas id="game" width="750" height="300"></canvas>
 <button id="restartBtn">Play Again</button>
 <p>Press SPACE to jump ⬆️</p>
 
@@ -192,6 +192,9 @@ restartBtn.onclick = () => {
     gameLoop();
 };
 </script>
+<!-- <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js"></script>
+<button
+hx-post="/clicked" hx-swap="outerHTML"> click me </button> -->
 
 </body>
 </html>
