@@ -9,5 +9,4 @@ class IsAdminRole(BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        # Check role
         return request.user.role in ["admin", "SUPERADMIN"]

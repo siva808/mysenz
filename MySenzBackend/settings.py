@@ -31,7 +31,7 @@ CORS_ALLOW_CREDENTIALS = True
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 APPEND_SLASH=False
 ALLOWED_HOSTS = ['*']
 
@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'rest_framework_simplejwt',
     'MySenzApp',
+    'FlowBill',
     "corsheaders",
 ]
 
@@ -64,9 +65,8 @@ SIMPLE_JWT = {
 
 }
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",   # ✅ allow your frontend
-]
+CORS_ALLOWED_ORIGINS = ["http://localhost:5173", ]
+
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -79,6 +79,10 @@ MIDDLEWARE = [
 
     'MySenzApp.middleware.custom_error.CustomErrorMiddleware',
 ]
+
+
+
+
 
 ROOT_URLCONF = 'MySenzBackend.urls'
 

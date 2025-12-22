@@ -233,17 +233,6 @@ class IsAdminOrStaff(permissions.BasePermission):
         ])
 
 
-class AdminMedicineRequestListView(generics.ListAPIView):
-    serializer_class = MedicineRequestListSerializer
-    permission_classes = [IsAdminOrStaff]
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["status", "pincode", "area"]
-    queryset = MedicineRequest.objects.all().order_by("-created_at")
-
-class AdminMedicineRequestStatusUpdateView(generics.UpdateAPIView):
-    serializer_class = MedicineRequestStatusUpdateSerializer
-    permission_classes = [IsAdminOrStaff]
-    queryset = MedicineRequest.objects.all()
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])

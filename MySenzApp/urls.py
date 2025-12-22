@@ -11,8 +11,6 @@ urlpatterns = [
     path("admin/auth-reset-password/<uidb64>/<token>/", reset_password, name="reset_password"),
     path("admin/logout/",logout,name="logout"),
     path("admin/logout-alldevices/",logout_alldevices,name="logout_alldevices"),
-    path("admin/medicine-list/",AdminMedicineRequestListView.as_view(),name="medicine_list"),
-    path("admin/medicine-status-update/",AdminMedicineRequestStatusUpdateView.as_view(),name="medicine_update_status"),
    
     #store-manager
     path("admin/store-manager-create/", create_store_manager, name="create_store_manager"),

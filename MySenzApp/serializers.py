@@ -87,16 +87,6 @@ class CustomerSerializer(serializers.ModelSerializer):
         fields = ["id", "email", "name", "contact", "address", "created_at"]
 
 
-class MedicineRequestListSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MedicineRequest
-        fields = ["id","request_uuid","customer_name","mobile","area","pincode","requirement_text","prescription_file","status","notes","created_at"]
-
-class MedicineRequestStatusUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MedicineRequest
-        fields = ["status", "notes"]
-
 class StoreManagerserviceSerializer(serializers.ModelSerializer):
     store_name = serializers.CharField(source="store.name", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
