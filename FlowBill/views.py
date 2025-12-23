@@ -6,8 +6,14 @@ from .models import *
 from .serializers import *
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAdminUser
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework import status, permissions
+from MySenzApp.crud import DocumentManager
 import csv
 from django.db import transaction
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 
 class VendorAPIView(APIView):
     permission_classes = [IsAdminUser] 
@@ -17,10 +23,8 @@ class VendorAPIView(APIView):
         if serializer.is_valid():
             vendor = serializer.save()
             return Response(
-                {"success":True,"message": "Vendor created", "vendor_id": vendor.vendor_id},
-                status=status.HTTP_201_CREATED
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                {"success":True,"message": "Vendor created", "vendor_id": vendor.vendor_id},)
+        return Response({"success": False, "error": serializer.errors})
 
     
     def put(self, request): 
@@ -29,16 +33,15 @@ class VendorAPIView(APIView):
         serializer = VendorSerializer(vendor, data=request.data, partial=True) 
         if serializer.is_valid(): 
             serializer.save() 
-            return Response( {"success": True, "message": "Vendor updated", "data": serializer.data}, status=status.HTTP_200_OK ) 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response( {"success": True, "message": "Vendor updated", "data": serializer.data}) 
+        return Response({"success": False, "error": serializer.errors})
     
     def get(self, request):
         vendors = Vendor.objects.all()
         serializer = VendorSerializer(vendors, many=True)
+
         return Response(
-            {"success": True, "data": serializer.data},
-            status=status.HTTP_200_OK
-        )
+            {"success": True, "data": serializer.data})
 
     def delete(self, request):
         json_request = JSONParser().parse(request)
@@ -55,6 +58,7 @@ class ProductAPIView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
+        medicine = Medicine.objects.all()
         queryset = Product.objects.all()
 
         # Extract filters from query params
@@ -66,8 +70,11 @@ class ProductAPIView(APIView):
         is_active = request.query_params.get("is_active")
 
         # Apply filters if present
-        if category_id:
+        if category_id == 9:
+            medicine = medicine.filter(category_id=category_id)
+        else:   
             queryset = queryset.filter(category_id=category_id)
+
         if brand_name:
             queryset = queryset.filter(brand_name__icontains=brand_name)
         if molecule:
@@ -83,11 +90,34 @@ class ProductAPIView(APIView):
         return Response({"success": True, "data": serializer.data}, status=status.HTTP_200_OK)
 
     def post(self, request):
-        serializer = ProductSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"success": True, "message": "Product created successfuly "}, status=status.HTTP_201_CREATED)
-        return Response({"success": False, "error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        category_id = request.data.get("category")
+
+        if category_id == 9:
+            medicine_serializer = MedicineSerializer(data=request.data)
+            if medicine_serializer.is_valid():
+                medicine_serializer.save()
+                return Response(
+                    {"success": True, "message": "Medicine created successfully"},
+                    status=status.HTTP_201_CREATED
+                )
+            return Response(
+                {"success": False, "error": medicine_serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        
+        product_serializer = ProductSerializer(data=request.data)
+        if product_serializer.is_valid():
+            product_serializer.save()
+            return Response(
+                {"success": True, "message": "Product created successfully"},
+                status=status.HTTP_201_CREATED
+            )
+        return Response(
+            {"success": False, "error": product_serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
 
     def put(self, request, ):
         product_id = request.data.get("product_id") 
@@ -128,54 +158,7 @@ class ProductAPIView(APIView):
             return Response({"success": False, "error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
  
 
-class MedicineAPIView(APIView):
-    permission_classes = [IsAdminUser]
 
-    def get(self, request):
-
-        categories = Medicine.objects.all()
-
-        if 'category_id' in request.query_params:
-            categories = categories.filter(category_id=request.query_params['category_id'])
-
-        serializer = MedicineSerializer(categories, many=True)
-        return Response(
-            {"success": True, "data": serializer.data},
-            status=status.HTTP_200_OK
-        )
-    
-    def post(self, request):
-        serializer = MedicineSerializer(data=request.data)
-        if serializer.is_valid():
-            category = serializer.save()
-            return Response(
-                {"success":True,"message": "Category created", "category_id": category.category_id},
-                status=status.HTTP_201_CREATED
-            )
-        return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)  
-        
-    def put(self, request): 
-        product_id = request.data.get("product_id")
-        category = get_object_or_404(Medicine, product_id=product_id) 
-        serializer = MedicineSerializer(category, data=request.data, partial=True) 
-        if serializer.is_valid():  
-            serializer.save() 
-            return Response( {"success": True, "message": "Category updated", "data": serializer.data}, status=status.HTTP_200_OK ) 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-
-
-    def delete(self, request):
-        json_request = JSONParser().parse(request)
-        product_id = json_request.get("product_id")
-
-        category = get_object_or_404(Medicine, product_id=product_id)
-        category.delete()
-        return Response(
-            {"success": True, "message": "Category deleted"},
-            status=status.HTTP_204_NO_CONTENT
-        )
-    
 
 
 
@@ -252,67 +235,226 @@ class BulkUploadAPIView(APIView):
 
 
 
-class PurchaseOrderListCreateAPIView(APIView):
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def get_vendor(request):
+    category_name = request.data.get("category_name")
+
+    if not category_name:
+        return Response(
+            {"success": False, "error": "category_name is required"})
+
+    # category_name is already a string, so use it directly
+    vendors = Vendor.objects.filter(categories__contains=[category_name],is_active=True).values("id", "name")
+
+    return Response(
+        {"success": True, "data": list(vendors)},
+        status=status.HTTP_200_OK
+    )
+
+
+
+
+
+class IndentListCreateAPIView(APIView):
+    
+    def post(self, request):
+
+        serializer = IndentSerializer(data=request.data)
+        if serializer.is_valid():
+            indent = serializer.save()
+            return Response(IndentSerializer(indent).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+    def update(self, request):
+        indent_number = request.data.get("indent_number")
+        indent = Indent.objects.filter(indent_number=indent_number)
+
+        serializer = IndentSerializer(indent, data=request.data, partial=True)
+        if serializer.is_valid():
+            indent = serializer.save()
+            return Response(IndentSerializer(indent).data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+
+
+class IndentListCreateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-
-        pos = PurchaseOrder.objects.all()
-        serializer = PurchaseOrderSerializer(pos, many=True)
-
+        indents = Indent.objects.select_related("store").prefetch_related("items__product")
+        serializer = IndentSerializer(indents, many=True)
         return Response(serializer.data)
 
     def post(self, request):
-
-        serializer = PurchaseOrderSerializer(data=request.data)
+        serializer = IndentSerializer(data=request.data)
         if serializer.is_valid():
-            po = serializer.save()
-            return Response(PurchaseOrderSerializer(po).data, status=status.HTTP_201_CREATED)
+            indent = serializer.save()
+            return Response(IndentSerializer(indent).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class PurchaseOrderDetailAPIView(APIView):
+class IndentDetailAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self, pk):
+        try:
+            return Indent.objects.select_related("store").prefetch_related("items__product").get(pk=pk)
+        except Indent.DoesNotExist:
+            return None
 
     def get(self, request, pk):
-        po_number = request.data.get("po_number")
-
-        try:
-            po = PurchaseOrder.objects.get(po_number=po_number)
-
-        except PurchaseOrder.DoesNotExist:
-            return Response({"success": False, "error": "PO not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        serializer = PurchaseOrderSerializer(po)
-
-        return Response({"success": True, "message": "Purchase order retrieved successfully"})
+        indent = self.get_object(pk)
+        if not indent:
+            return Response({"error": "Indent not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(IndentSerializer(indent).data)
 
     def patch(self, request, pk):
-        po_number = request.data.get("po_number")
-        try:
-            po = PurchaseOrder.objects.get(po_number=po_number)
-
-        except PurchaseOrder.DoesNotExist:
-            return Response({"success": False, "error": "PO not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        serializer = PurchaseOrderSerializer(po, data=request.data, partial=True)
+        indent = self.get_object(pk)
+        if not indent:
+            return Response({"error": "Indent not found"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = IndentSerializer(indent, data=request.data, partial=True)
         if serializer.is_valid():
-            po = serializer.save()
-            return Response({"success": True, "message": "Purchase order updated successfully"})
-        
-        return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            indent = serializer.save()
+            return Response(IndentSerializer(indent).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-class PurchaseOrderItemListCreateAPIView(APIView):
+class IndentListCreateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-
-        items = PurchaseOrderItem.objects.all()
-        serializer = PurchaseOrderItemSerializer(items, many=True)
-        return Response({"success": True,"message": "Purchase order items retrieved successfully"})
+        pk = request.data.get("id")
+        indents = DocumentManager.fetch_all_rows(
+            Indent,
+            filters={"id":pk},
+            field_list=["id", "indent_number", "store", "status"],
+            sort_list=["-created_at"]
+        )
+        serializer = IndentSerializer(indents, many=True)
+        return Response(serializer.data)
 
     def post(self, request):
-        
-        serializer = PurchaseOrderItemSerializer(data=request.data)
+        serializer = IndentSerializer(data=request.data)
         if serializer.is_valid():
-            item = serializer.save()
-            return Response(PurchaseOrderItemSerializer(item).data, status=status.HTTP_201_CREATED)
+            indent = serializer.save()
+            return Response(IndentSerializer(indent).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class IndentDetailAPIView(APIView):
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        pk = request.data.get("id")
+
+        indent = DocumentManager.fetch_row(Indent,filters={"id": pk},field_list=["id", "indent_number", "store", "status"])
+
+        if not indent:
+            return Response({"error": "Indent not found"})
+        
+        serializer = IndentSerializer(indent)
+        return Response(serializer.data)
+
+    def patch(self, request, pk):
+        indent = DocumentManager.fetch_row(Indent, filters={"id": pk})
+        if not indent:
+            return Response({"error": "Indent not found"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = IndentSerializer(indent, data=request.data, partial=True)
+        if serializer.is_valid():
+            indent = serializer.save()
+            return Response(IndentSerializer(indent).data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        deleted = DocumentManager.remove_rows(Indent, filters={"id": pk})
+        if deleted:
+            return Response({"success": True}, status=status.HTTP_200_OK)
+        return Response({"error": "Indent not found"}, status=status.HTTP_404_NOT_FOUND)
+
+
+
+
+@csrf_exempt
+@api_view(["POST"])
+def create_purchase_order(request):
+    json_request = JSONParser().parse(request)
+    vendor_id = json_request.get("vendor") # <-- match your payload key
+    items_data = json_request.get("items", [])
+
+    try: 
+        vendor = Vendor.objects.get(id=vendor_id) 
+    except Vendor.DoesNotExist: 
+        return JsonResponse({"error": f"Vendor with id {vendor_id} does not exist"}, status=400) 
+    # Create PurchaseOrder
+    po = PurchaseOrder.objects.create(vendor=vendor)
+
+    created_items = []
+    for item in items_data:
+        prod_code = item.get("product_id")
+        qty = int(item.get("qty", 0))
+        uom = item.get("uom")
+        category_id = item.get("category_id")
+
+        if not prod_code:
+            return JsonResponse({"success": False, "message": "Each item must include a valid 'product_id'"}, status=400)
+
+        if category_id == 9:
+            # Medicine lookup
+            try:
+                med_obj = Medicine.objects.get(product_id=prod_code)
+            except Medicine.DoesNotExist:
+                return JsonResponse({"success": False, "message": f"Medicine with product_id {prod_code} does not exist"}, status=400)
+
+            po_item = PurchaseOrderItem.objects.create(
+                purchase_order=po,
+                medicine=med_obj,
+                qty=qty,
+                uom=uom
+            )
+        else:
+            # Product lookup
+            try:
+                prod_obj = Product.objects.get(product_id=prod_code)
+            except Product.DoesNotExist:
+                return JsonResponse({"success": False, "message": f"Product with product_id {prod_code} does not exist"}, status=400)
+
+            po_item = PurchaseOrderItem.objects.create(
+                purchase_order=po,
+                product=prod_obj,
+                qty=qty,
+                uom=uom
+            )
+
+        created_items.append({
+            "id": po_item.id,
+            "product_id": prod_code,
+            "qty": qty,
+            "uom": uom
+        })
+
+    # Build response manually
+
+
+    return JsonResponse({"success":True,"message":"Purchase Order created successfully"}, status=201)
+
+@csrf_exempt
+@api_view(["POST"])
+def get_products(request):
+    category_id = request.data.get("category_id")
+    if not category_id:
+        return JsonResponse({"success":False,"message": "category_id is required"}, status=400)
+
+    try:
+        category_id = int(category_id)
+        
+    except ValueError:
+        return JsonResponse({"success":False,"message": "category_id must be an integer"}, status=400)
+    if category_id == 9:
+        products = Medicine.objects.filter(category_id=category_id).values()
+    else:
+        products = Product.objects.filter(category_id=category_id).values()
+
+    return JsonResponse({"success": True, "data": list(products)}, status=200)
+
