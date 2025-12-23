@@ -12,6 +12,8 @@ from rest_framework import status, permissions
 from MySenzApp.crud import DocumentManager
 import csv
 from django.db import transaction
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 
 class VendorAPIView(APIView):
     permission_classes = [IsAdminUser] 
@@ -68,8 +70,11 @@ class ProductAPIView(APIView):
         is_active = request.query_params.get("is_active")
 
         # Apply filters if present
-        if category_id:
+        if category_id == 9:
+            medicine = medicine.filter(category_id=category_id)
+        else:   
             queryset = queryset.filter(category_id=category_id)
+
         if brand_name:
             queryset = queryset.filter(brand_name__icontains=brand_name)
         if molecule:
@@ -230,79 +235,6 @@ class BulkUploadAPIView(APIView):
 
 
 
-class PurchaseOrderListCreateAPIView(APIView):
-
-    def get(self, request):
-
-        pos = PurchaseOrder.objects.all()
-        serializer = PurchaseOrderSerializer(pos, many=True)
-
-        return Response({"success": True, "data": serializer.data})
-
-    def post(self, request):
-
-        serializer = PurchaseOrderSerializer(data=request.data)
-        if serializer.is_valid():
-            po = serializer.save()
-            return Response({"success": True, "data": PurchaseOrderSerializer(po).data}, status=status.HTTP_201_CREATED)
-        return Response({"success": False, "error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-class PurchaseOrderDetailAPIView(APIView):
-
-    def get(self, request, pk):
-        po_number = request.data.get("po_number")
-
-        try:
-            po = PurchaseOrder.objects.get(po_number=po_number)
-
-        except PurchaseOrder.DoesNotExist:
-            return Response({"success": False, "error": "PO not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        serializer = PurchaseOrderSerializer(po)
-
-        return Response({"success": True, "message": "Purchase order retrieved successfully"})
-
-    def patch(self, request, pk):
-        po_number = request.data.get("po_number")
-        try:
-            po = PurchaseOrder.objects.get(po_number=po_number)
-
-        except PurchaseOrder.DoesNotExist:
-            return Response({"success": False, "error": "PO not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        serializer = PurchaseOrderSerializer(po, data=request.data, partial=True)
-        if serializer.is_valid():
-            po = serializer.save()
-            return Response({"success": True, "message": "Purchase order updated successfully"})
-        
-        return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-class PurchaseOrderItemListCreateAPIView(APIView):
-
-    def get(self, request):
-
-        items = PurchaseOrderItem.objects.all()
-        serializer = PurchaseOrderItemSerializer(items, many=True)
-        return Response({"success": True,"message": "Purchase order items retrieved successfully"})
-
-    def post(self, request):
-        
-        serializer = PurchaseOrderItemSerializer(data=request.data)
-        if serializer.is_valid():
-            item = serializer.save()
-            return Response(PurchaseOrderItemSerializer(item).data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def get_vendor(request):
@@ -440,3 +372,89 @@ class IndentDetailAPIView(APIView):
         if deleted:
             return Response({"success": True}, status=status.HTTP_200_OK)
         return Response({"error": "Indent not found"}, status=status.HTTP_404_NOT_FOUND)
+
+
+
+
+@csrf_exempt
+@api_view(["POST"])
+def create_purchase_order(request):
+    json_request = JSONParser().parse(request)
+    vendor_id = json_request.get("vendor") # <-- match your payload key
+    items_data = json_request.get("items", [])
+
+    try: 
+        vendor = Vendor.objects.get(id=vendor_id) 
+    except Vendor.DoesNotExist: 
+        return JsonResponse({"error": f"Vendor with id {vendor_id} does not exist"}, status=400) 
+    # Create PurchaseOrder
+    po = PurchaseOrder.objects.create(vendor=vendor)
+
+    created_items = []
+    for item in items_data:
+        prod_code = item.get("product_id")
+        qty = int(item.get("qty", 0))
+        uom = item.get("uom")
+        category_id = item.get("category_id")
+
+        if not prod_code:
+            return JsonResponse({"success": False, "message": "Each item must include a valid 'product_id'"}, status=400)
+
+        if category_id == 9:
+            # Medicine lookup
+            try:
+                med_obj = Medicine.objects.get(product_id=prod_code)
+            except Medicine.DoesNotExist:
+                return JsonResponse({"success": False, "message": f"Medicine with product_id {prod_code} does not exist"}, status=400)
+
+            po_item = PurchaseOrderItem.objects.create(
+                purchase_order=po,
+                medicine=med_obj,
+                qty=qty,
+                uom=uom
+            )
+        else:
+            # Product lookup
+            try:
+                prod_obj = Product.objects.get(product_id=prod_code)
+            except Product.DoesNotExist:
+                return JsonResponse({"success": False, "message": f"Product with product_id {prod_code} does not exist"}, status=400)
+
+            po_item = PurchaseOrderItem.objects.create(
+                purchase_order=po,
+                product=prod_obj,
+                qty=qty,
+                uom=uom
+            )
+
+        created_items.append({
+            "id": po_item.id,
+            "product_id": prod_code,
+            "qty": qty,
+            "uom": uom
+        })
+
+    # Build response manually
+
+
+    return JsonResponse({"success":True,"message":"Purchase Order created successfully"}, status=201)
+
+@csrf_exempt
+@api_view(["POST"])
+def get_products(request):
+    category_id = request.data.get("category_id")
+    if not category_id:
+        return JsonResponse({"success":False,"message": "category_id is required"}, status=400)
+
+    try:
+        category_id = int(category_id)
+        
+    except ValueError:
+        return JsonResponse({"success":False,"message": "category_id must be an integer"}, status=400)
+    if category_id == 9:
+        products = Medicine.objects.filter(category_id=category_id).values()
+    else:
+        products = Product.objects.filter(category_id=category_id).values()
+
+    return JsonResponse({"success": True, "data": list(products)}, status=200)
+
