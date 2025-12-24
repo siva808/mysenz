@@ -117,7 +117,7 @@ class PurchaseOrder(models.Model):
         else:
             super().save(*args, **kwargs)
 
-    def recalc_total(self):
+    def recalc_total(self): 
         self.total_amount = sum(item.subtotal for item in self.items.all())
         self.save(update_fields=["total_amount"])
 
@@ -146,7 +146,6 @@ class PurchaseOrderItem(models.Model):
 
 
 class Indent(models.Model):
-     
     indent_number = models.CharField(max_length=20, unique=True, blank=True) 
     store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="indents") 
     created_at = models.DateTimeField(auto_now_add=True) 
@@ -170,7 +169,8 @@ class Indent(models.Model):
 class IndentItem(models.Model): 
     
     indent = models.ForeignKey(Indent, related_name="items", on_delete=models.CASCADE) 
-    product = models.ForeignKey(Product, on_delete=models.CASCADE) 
+    product = models.ForeignKey(Product, on_delete=models.CASCADE , null=True, blank=True) 
+    medicine = models.ForeignKey(Medicine, on_delete=models.CASCADE, null=True, blank=True)
     quantity = models.PositiveIntegerField() 
 
     def __str__(self): 
