@@ -634,4 +634,3 @@ def get_services_by_categoryy(request):
         )
     
 
-#Open bill → Add items → Discount → Payment → Check stock → Finalize → Deduct stock

@@ -16,7 +16,13 @@ class Vendor(models.Model):
     categories = ArrayField(models.CharField(max_length=50), default=list, blank=True)
     payment = models.CharField(max_length=50,default="CREDIT")
     credit_days = models.PositiveIntegerField(default=0)
+
+    #common fields 
+    created_at = models.DateTimeField(auto_now_add=True) 
+    updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
+
+    
 
     def save(self, *args, **kwargs): 
         if not self.vendor_id:
@@ -50,7 +56,12 @@ class Product(models.Model):
     color = models.CharField(max_length=50, blank=True, null=True)
     size = models.CharField(max_length=50, blank=True, null=True)
 
+
+    #coomon fields
+
     stock = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
@@ -83,6 +94,10 @@ class Medicine(models.Model):
     molecule = models.CharField(max_length=100, blank=True, null=True) 
     uom = models.CharField(max_length=20, blank=True, null=True) # strip, box, tablet 
     stock = models.PositiveIntegerField(default=0)
+
+    #common fields
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
@@ -108,6 +123,11 @@ class PurchaseOrder(models.Model):
     order_date = models.DateField(auto_now_add=True)
     status = models.CharField(max_length=20, default="created")  # created, received, cancelled
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    #common fields
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
         if not self.po_number:
@@ -148,11 +168,13 @@ class PurchaseOrderItem(models.Model):
 class Indent(models.Model):
     indent_number = models.CharField(max_length=20, unique=True, blank=True) 
     store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="indents") 
-    created_at = models.DateTimeField(auto_now_add=True) 
-    status = models.CharField( max_length=20,default="draft")
-    updated_at = models.DateTimeField(auto_now=True)
-
+    status = models.CharField( max_length=150)
     suggested_vendors = ArrayField(models.IntegerField(), default=list, blank=True)
+
+    #coomen fields
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True) 
     
     def save(self, *args, **kwargs): 
         if not self.indent_number: 
@@ -177,5 +199,59 @@ class IndentItem(models.Model):
         return f"{self.product.name} x {self.quantity}" 
     class Meta: 
         db_table = "indent_item"
+class IndentStatus(models.Model):
+    status = models.CharField(max_length=50)
+
+    def __str__(self):
+        return self.status
+    
+
+class GRN(models.Model):
+    grn_number = models.CharField(max_length=50, unique=True)
+    grn_type = models.CharField(max_length=16,)
+
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name="grns")
+    status = models.CharField(max_length=20, choices=[("Partial", "Partial"), ("Full", "Full")])
+
+    dispatch_id = models.IntegerField(null=True, blank=True) 
+    request_id=models.CharField(max_length=64,unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "grn"
+        indexes = [
+          models.Index(fields= ["purchase_order"]),
+          models.Index(fields= ["status"]),]
+
+    def __str__(self):
+      return self.grn_number
 
 
+class GRNItem(models.Model):
+    grn = models.ForeignKey(GRN, on_delete=models.CASCADE, related_name="items")
+
+    product = models.ForeignKey(Product, null=True, blank=True, on_delete=models.SET_NULL)
+    medicine = models.ForeignKey(Medicine, null=True, blank=True, on_delete=models.SET_NULL)
+
+    batch_no = models.CharField(max_length=50)
+    expiry_date = models.DateField(null=True, blank=True)
+
+    accepted_qty = models.IntegerField()
+    rejected_qty = models.IntegerField(default=0)
+
+    uom= models.CharField(max_length=20)
+    reason = models.CharField(max_length=50,blank=True)
+
+    creted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table="grn_item"
+        indexes = [
+            models.Index(fields=["product","batch_no"]),
+            models.Index(fields=["medicine","batch_no"]),
+        ]
+
+    def __str__(self):
+        name = self.product.name if self.product else (self.medicine.name if self.medicine else "unknown")
+        return f"{self.grn.grn_number} | {name} | {self.accepted_qty}/{self.rejected_qty}"

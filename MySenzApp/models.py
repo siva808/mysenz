@@ -3,7 +3,7 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseU
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.contrib.postgres.fields import ArrayField
-# 9841240537
+
 
 class AdminUserManager(BaseUserManager):
     def create_user(self, email, password=None, role="customer", **extra_fields):

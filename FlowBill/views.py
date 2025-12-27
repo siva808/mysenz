@@ -14,6 +14,9 @@ import csv
 from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.db.models import Prefetch
+
+
 
 class VendorAPIView(APIView):
     permission_classes = [IsAdminUser] 
@@ -53,6 +56,9 @@ class VendorAPIView(APIView):
             {"success": True, "message": "Vendor deleted"},
             status=status.HTTP_204_NO_CONTENT
         )
+    
+
+
     
 class ProductAPIView(APIView):
     permission_classes = [IsAdminUser]
@@ -321,7 +327,7 @@ def create_purchase_order(request):
 
     return JsonResponse({"success":True,"message":"Purchase Order created successfully"}, status=201)
 
-from django.db.models import Prefetch
+
 
 @csrf_exempt
 @api_view(["POST"])
@@ -450,7 +456,7 @@ def get_po_details(request):
             "name": getattr(obj, "name", None),
             "description": getattr(obj, "description", None),
             "quantity": getattr(obj, "quantity", None),
-            "brand_name": getattr(obj, "brand_name", None),
+            "brand_name": getattr(obj, "brand_name", None), 
             "molecule": getattr(obj, "molecule", None),
             "uom": getattr(obj, "uom", None),
             "shape": getattr(obj, "shape", None),
@@ -520,6 +526,7 @@ def po_update_status(request):
 
 
 
+from django.db import transaction
 
 @csrf_exempt
 @api_view(["POST"])
@@ -529,103 +536,81 @@ def create_indent(request):
     store_id = json_request.get("store_id")
     items_data = json_request.get("items", [])
     suggested_vendors = json_request.get("suggested_vendors", [])
+    status = json_request.get("status")
 
     if not store_id or not items_data:
-        return JsonResponse(
-            {"success": False, "message": "store_id and items are required"},
-            status=400
-        )
-    try: 
-        store_uuid = uuid.UUID(store_id) 
-    except ValueError: 
-        return JsonResponse( {"success": False, "message": "Invalid store_id format (must be UUID)"}, status=400 )
-    
-    
+        return JsonResponse({"success": False, "message": "store_id and items are required"}, status=400)
+
+    # Validate UUID
+    try:
+        store_uuid = uuid.UUID(store_id)
+    except ValueError:
+        return JsonResponse({"success": False, "message": "Invalid store_id format (must be UUID)"}, status=400)
+
+    # Fetch store
     try:
         store = Store.objects.get(id=store_uuid)
     except Store.DoesNotExist:
-        return JsonResponse(
-            {"success": False, "message": f"Store with id {store_id} does not exist"},
-            
-        )
+        return JsonResponse({"success": False, "message": f"Store with id {store_id} does not exist"}, status=404)
 
-    # Create indent
-    indent = Indent.objects.create(
-        store=store,
-        status="draft",
-        suggested_vendors=suggested_vendors
-    )
-
-    created_items = []
+    # ✅ Validate items first
+    validated_items = []
     for item in items_data:
         prod_code = item.get("product_id")
         qty = int(item.get("quantity", 0))
         category_id = item.get("category_id")
 
         if not prod_code or qty <= 0:
-            return JsonResponse(
-                {"success": False, "message": "Each item must include product_id and valid quantity"},
-                status=400
-            )
+            return JsonResponse({"success": False, "message": "Each item must include product_id and valid quantity"}, status=400)
 
-        # ✅ Business rule: even if category_id == 9, treat as Product
-        try:
-            prod_obj = Product.objects.get(product_id=prod_code)
-        except Product.DoesNotExist:
-            return JsonResponse(
-                {"success": False, "message": f"Product with product_id {prod_code} does not exist"},
-                status=400
-            )
+        if category_id == 9:
+            try:
+                med_obj = Medicine.objects.get(product_id=prod_code)
+            except Medicine.DoesNotExist:
+                return JsonResponse({"success": False, "message": f"Medicine with product_id {prod_code} does not exist"}, status=400)
+            validated_items.append(("medicine", med_obj, qty, category_id))
+        else:
+            try:
+                prod_obj = Product.objects.get(product_id=prod_code)
+            except Product.DoesNotExist:
+                return JsonResponse({"success": False, "message": f"Product with product_id {prod_code} does not exist"}, status=400)
+            validated_items.append(("product", prod_obj, qty, category_id))
 
-        indent_item = IndentItem.objects.create(
-            indent=indent,
-            product=prod_obj,
-            quantity=qty
-        )
+    # ✅ Create indent + items atomically
+    with transaction.atomic():
+        indent = Indent.objects.create(store=store, status=status, suggested_vendors=suggested_vendors)
 
-        created_items.append({
-            "id": indent_item.id,
-            "product_id": prod_obj.product_id,
-            "name": prod_obj.name,
-            "quantity": indent_item.quantity,
-            "category_id": category_id
-        })
+        created_items = []
+        for item_type, obj, qty, category_id in validated_items:
+            if item_type == "medicine":
+                indent_item = IndentItem.objects.create(indent=indent, medicine=obj, quantity=qty)
+            else:
+                indent_item = IndentItem.objects.create(indent=indent, product=obj, quantity=qty)
+
+            created_items.append({
+                "id": indent_item.id,
+                "product_id": obj.product_id,
+                "name": obj.name,
+                "quantity": indent_item.quantity,
+                "category_id": category_id,
+                "type": item_type,
+            })
 
     return JsonResponse({
         "success": True,
         "message": "Indent created successfully",
         "indent_number": indent.indent_number,
-        "store": store.name,
-        "status": indent.status,
-        "created_at": indent.created_at.strftime("%Y-%m-%d %H:%M:%S"),
         "items": created_items
     }, status=201)
 
 
-class IndentDetailAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+@csrf_exempt 
+@api_view(["GET"]) 
+def get_intent_list(request): 
+    statuses = IndentStatus.objects.values_list("status", flat=True)
+    return Response({"success": True, "statuses": list(statuses)}, status=status.HTTP_200_OK)
+    
 
-    def get_object(self, pk):
-        try:
-            return Indent.objects.select_related("store").prefetch_related("items__product").get(pk=pk)
-        except Indent.DoesNotExist:
-            return None
-
-    def get(self, request, pk):
-        indent = self.get_object(pk)
-        if not indent:
-            return Response({"error": "Indent not found"}, status=status.HTTP_404_NOT_FOUND)
-        return Response(IndentSerializer(indent).data)
-
-    def patch(self, request, pk):
-        indent = self.get_object(pk)
-        if not indent:
-            return Response({"error": "Indent not found"}, status=status.HTTP_404_NOT_FOUND)
-        serializer = IndentSerializer(indent, data=request.data, partial=True)
-        if serializer.is_valid():
-            indent = serializer.save()
-            return Response(IndentSerializer(indent).data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @csrf_exempt
 @api_view(["POST"])
@@ -633,13 +618,262 @@ def stoke_management(request):
     json_request = JSONParser().parse(request)
     Category_id = json_request.get("category_id")
    
-
     if Category_id ==9:
 
         product = Medicine.objects.get(product_id=Category_id)
     else:
         product = Product.objects.get(product_id=Category_id)
 
-
-
     return JsonResponse({"success": True, "message": "Product stock updated to "}, status=200)
+
+
+
+
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view
+from rest_framework.parsers import JSONParser
+
+from .models import Indent, Vendor, Product, Medicine  # adjust imports to your app
+
+@csrf_exempt
+@api_view(["POST"])
+def get_indent_details(request):
+    json_request = JSONParser().parse(request)
+    indent_number = json_request.get("indent_number")
+    status_filter = json_request.get("status")
+    store_id = json_request.get("store_id")
+
+
+    # Filter by status
+    if status_filter:
+        indents = (
+            Indent.objects
+            .select_related("store")
+            .prefetch_related("items__product__category", "items__medicine__category")
+            .filter(status=status_filter)
+        )
+
+        data = []
+        for indent in indents:
+            vendor_names = []
+            first_item = indent.items.first()
+            category_id, category_name = None, None
+
+            if indent.suggested_vendors:
+                vendors = Vendor.objects.in_bulk(indent.suggested_vendors)
+                vendor_names = [{"id": v.id, "name": v.name} for v in vendors.values()]
+
+            if first_item:
+                if first_item.product and first_item.product.category:
+                    category_id = first_item.product.category_id
+                    category_name = first_item.product.category.name
+                elif first_item.medicine and first_item.medicine.category:
+                    category_id = first_item.medicine.category_id
+                    category_name = first_item.medicine.category.name
+
+            data.append({
+                "indent_number": indent.indent_number,
+                "store": getattr(indent.store, "name", indent.store_id),
+                "created_at": indent.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "status": indent.status,
+                "category_id": category_id,
+                "category_name": category_name,
+                "suggested_vendors": vendor_names,
+            })
+
+        return JsonResponse({
+            "success": True,
+            "count": indents.count(),
+            "indents": data
+        }, status=200)
+
+    # List all indents if no indent_number
+    if not indent_number:
+        indents = (
+            Indent.objects
+            .select_related("store")
+            .prefetch_related("items__product__category", "items__medicine__category")
+            .order_by("-id")
+        )
+
+        data = []
+        for indent in indents:
+            vendor_names = []
+            first_item = indent.items.first()
+            category_id, category_name = None, None
+
+            if indent.suggested_vendors:
+                vendors = Vendor.objects.in_bulk(indent.suggested_vendors)
+                vendor_names = [{"id": v.id, "name": v.name} for v in vendors.values()]
+
+            if first_item:
+                if first_item.product and first_item.product.category:
+                    category_id = first_item.product.category_id
+                    category_name = first_item.product.category.name
+                elif first_item.medicine and first_item.medicine.category:
+                    category_id = first_item.medicine.category_id
+                    category_name = first_item.medicine.category.name
+
+            data.append({
+                "indent_number": indent.indent_number,
+                "store": getattr(indent.store, "name", indent.store_id),
+                "created_at": indent.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "status": indent.status,
+                "category_id": category_id,
+                "category_name": category_name,
+                "suggested_vendors": vendor_names,
+            })
+
+        return JsonResponse({"success": True, "indents": data}, status=200)
+
+    # One indent with item-level details
+    try:
+        indent = (
+            Indent.objects
+            .select_related("store")
+            .prefetch_related("items__product__category", "items__medicine__category")
+            .get(indent_number=indent_number)
+        )
+    except Indent.DoesNotExist:
+        return JsonResponse(
+            {"success": False, "message": f"Indent with number {indent_number} does not exist"},
+        )
+
+    # Resolve vendor names
+    vendor_names = []
+    if indent.suggested_vendors:
+        vendors = Vendor.objects.in_bulk(indent.suggested_vendors)
+        vendor_names = [v.name for v in vendors.values()]
+
+    items = []
+    category_id, category_name = None, None  # <-- initialize before loop
+
+    for item in indent.items.all():
+        obj = item.product or item.medicine
+        if not obj:
+            continue
+
+        if hasattr(obj, "category") and obj.category:
+            category_id = obj.category_id
+            category_name = obj.category.name
+
+        item_data = {
+            "id": obj.id,
+            "product_id": getattr(obj, "product_id", None),
+            "name": getattr(obj, "name", None),
+            "qty": item.quantity,
+            "uom": getattr(obj, "uom", None),
+            "brand_name": getattr(obj, "brand_name", None),
+            "molecule": getattr(obj, "molecule", None),
+            "type": "product" if item.product else "medicine",
+            "category_name": category_name,
+            "created_at": indent.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        items.append(item_data)
+
+    indent_data = {
+        "indent_number": indent.indent_number,
+        "store": getattr(indent.store, "name", indent.store_id),
+        "created_at": indent.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        "status": indent.status,
+        "suggested_vendors": vendor_names,
+        "category_id": category_id,
+        "category_name": category_name,
+        "items": items,
+    }
+
+    return JsonResponse({"success": True, "indent": indent_data}, status=200)
+
+
+
+
+@csrf_exempt
+@api_view(["POST"])
+def update_indent(request):
+    json_request = JSONParser().parse(request)
+
+    indent_number = json_request.get("indent_id")   
+    status = json_request.get("status")
+    items_data = json_request.get("items", [])
+    suggested_vendors = json_request.get("suggested_vendors", [])
+
+    if not indent_number or not items_data:
+        return JsonResponse({"success": False, "message": "indent_id and items are required"})
+
+    # Fetch indent
+    try:
+        indent = Indent.objects.get(indent_number=indent_number)
+    except Indent.DoesNotExist:
+        return JsonResponse({"success": False, "message": f"Indent {indent_number} does not exist"})
+
+    #  Update indent status
+    if status:
+        indent.status = status
+    if suggested_vendors:
+        indent.suggested_vendors = suggested_vendors
+        
+    indent.save()
+
+    created_or_updated_items = []
+
+    with transaction.atomic():
+        for item in items_data:
+            prod_code = item.get("product_id")
+            qty = int(item.get("qty", 0))
+            category_id = item.get("category_id")
+
+            if not prod_code or qty <= 0:
+                return JsonResponse({"success": False, "message": "Each item must include product_id and valid quantity"})
+
+            if category_id == 9:
+                # Medicine
+                try:
+                    med_obj = Medicine.objects.get(product_id=prod_code)
+                except Medicine.DoesNotExist:
+                    return JsonResponse({"success": False, "message": f"Medicine with product_id {prod_code} does not exist"})
+
+                indent_item, created = IndentItem.objects.update_or_create(
+                    indent=indent,
+                    medicine=med_obj,
+                    defaults={"quantity": qty}
+                )
+                action = "created" if created else "updated"
+
+                created_or_updated_items.append({
+                    "id": indent_item.id,
+                    "product_id": prod_code,
+                    "name": med_obj.name,
+                    "qty": indent_item.quantity,
+                    "category_id": category_id,
+                    "type": "medicine",
+                    "action": action
+                })
+            else:
+                # Product
+                try:
+                    prod_obj = Product.objects.get(product_id=prod_code)
+                except Product.DoesNotExist:
+                    return JsonResponse({"success": False, "message": f"Product with product_id {prod_code} does not exist"})
+
+                indent_item, created = IndentItem.objects.update_or_create(
+                    indent=indent,
+                    product=prod_obj,
+                    defaults={"quantity": qty}
+                )
+                action = "created" if created else "updated"
+
+                created_or_updated_items.append({
+                    "id": indent_item.id,
+                    "product_id": prod_code,
+                    "name": prod_obj.name,
+                    "quantity": indent_item.quantity,
+                    "category_id": category_id,
+                    "type": "product",
+                    "action": action
+                })
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Indent {indent_number} updated successfully",
+    }, status=200)
